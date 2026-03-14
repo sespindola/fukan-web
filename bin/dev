@@ -1,0 +1,19 @@
+#!/usr/bin/env ruby
+require "fileutils"
+
+# Default to port 3000 unless overridden
+ENV["PORT"] ||= "3000"
+
+# Check for foreman or overmind
+if system("command -v overmind > /dev/null 2>&1")
+  exec "overmind start -f Procfile.dev #{ARGV.join(" ")}"
+elsif system("command -v foreman > /dev/null 2>&1")
+  exec "foreman start -f Procfile.dev #{ARGV.join(" ")}"
+else
+  abort <<~MSG
+    Install overmind or foreman to run bin/dev:
+      gem install foreman
+      # or
+      brew install overmind
+  MSG
+end
