@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class DashboardController < ApplicationController
+class DashboardController < InertiaController
   def show
     render inertia: "Dashboard", props: {}
   end

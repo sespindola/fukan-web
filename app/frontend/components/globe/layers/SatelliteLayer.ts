@@ -62,6 +62,7 @@ export class SatelliteLayer {
           position,
           image: '/icons/satellite.png',
           scale: 0.4,
+          color: Color.WHITE,
           scaleByDistance: new NearFarScalar(1e5, 1.0, 5e7, 0.3),
           translucencyByDistance: new NearFarScalar(1e5, 1.0, 5e7, 0.5),
         })
@@ -158,6 +159,7 @@ export class SatelliteLayer {
         position,
         image: '/icons/satellite.png',
         scale: 0.4,
+        color: Color.WHITE,
         scaleByDistance: new NearFarScalar(1e5, 1.0, 5e7, 0.3),
         translucencyByDistance: new NearFarScalar(1e5, 1.0, 5e7, 0.5),
       })

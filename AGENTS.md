@@ -46,7 +46,7 @@ User opens Fukan → Rails authenticates via Devise →
 
 ### Technical Non-Goals (never use these)
 
-- ❌ Jbuilder → Inertia handles serialization; use Jb only for standalone JSON API endpoints
+- ❌ Jbuilder / Jb → Use `alba_inertia` for Inertia responses and Alba (with OJ) for standalone JSON API endpoints
 - ❌ Rails credentials/secrets → Use environment variables exclusively
 - ❌ Turbo Streams/Hotwire → Inertia + React owns the frontend entirely
 - ❌ ERB views for UI → All UI is React via Inertia; Rails views are only the Inertia shell
@@ -256,7 +256,7 @@ const decodeLon = (v: number): number => v / 10_000_000
 | WebSockets         | AnyCable                     | Go-based WS server, ActionCable-compatible    |
 | Background jobs    | Sidekiq + Redis              | Job orchestration, scheduled tasks            |
 | ClickHouse reads   | clickhouse-activerecord      | ActiveRecord-like syntax for telemetry queries|
-| JSON API (if any)  | Jb templates                 | Not Jbuilder, only for non-Inertia endpoints  |
+| Serialization      | Alba + OJ + alba_inertia     | Alba for all serialization; alba_inertia integrates with Inertia props; OJ for fast JSON |
 | Tests (Rails)      | RSpec + FactoryBot           | Request specs, model specs, service specs     |
 | Tests (React)      | Vitest + Testing Library     | Component, store, and hook tests              |
 | E2E tests          | Playwright                   | Critical flows: login → globe → interact      |
@@ -277,7 +277,7 @@ app/
 │   ├── application_controller.rb
 │   ├── auth/                       # Devise overrides if needed
 │   ├── dashboard_controller.rb     # Main globe view (Inertia)
-│   ├── api/v1/                     # JSON API endpoints (Jb), if any
+│   ├── api/v1/                     # JSON API endpoints (Alba), if any
 │   └── settings/                   # Org settings, API keys, alerts
 ├── jobs/                           # Sidekiq (orchestration only, no business logic)
 │   ├── alert_evaluation_job.rb
@@ -538,7 +538,7 @@ class SettingsController < ApplicationController
 
   def index
     api_keys = current_user.organization.api_key_configs
-    render inertia: 'Settings', props: { apiKeys: api_keys.as_json }
+    render inertia: 'Settings', props: { apiKeys: ApiKeyConfigResource.new(api_keys).serializable_hash }
   end
 end
 
@@ -555,9 +555,9 @@ class DashboardController < ApplicationController
 
   def show
     render inertia: 'Dashboard', props: {
-      user: current_user.as_json(only: [:id, :email, :name]),
-      organization: current_user.organization.as_json(only: [:id, :name]),
-      savedViews: current_user.saved_views.as_json,
+      user: UserResource.new(current_user).serializable_hash,
+      organization: OrganizationResource.new(current_user.organization).serializable_hash,
+      savedViews: SavedViewResource.new(current_user.saved_views).serializable_hash,
       layerDefaults: default_layer_config
       # Telemetry is NOT passed as props — loaded via AnyCable after mount
     }
@@ -813,7 +813,7 @@ STRIPE_WEBHOOK_SECRET=whsec_xxx
 
 9. **No Turbo Streams / Hotwire** — Inertia + React owns the frontend
 10. **No ERB for UI** — React components only; ERB is just the Inertia shell
-11. **No Jbuilder** — Jb only, and only for non-Inertia JSON endpoints
+11. **No Jbuilder / Jb** — Alba with OJ for all serialization; use `alba_inertia` for Inertia props, Alba resources for JSON API endpoints
 12. **No Rails credentials** — environment variables only
 13. **No writing to ClickHouse from Rails** — Go ingest pipeline owns all writes
 14. **No localStorage in React** — Zustand for all client state
