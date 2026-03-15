@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
+import { persist, subscribeWithSelector } from 'zustand/middleware'
 
 interface GlobeState {
   longitude: number
@@ -14,15 +14,23 @@ interface GlobeState {
 }
 
 export const useGlobeStore = create<GlobeState>()(
-  subscribeWithSelector((set) => ({
-    longitude: 0,
-    latitude: 0.349, // ~20 degrees in radians
-    height: 20_000_000,
-    heading: 0,
-    pitch: -Math.PI / 2,
-    roll: 0,
-    viewportH3Cells: [],
-    setCamera: (v) => set((state) => ({ ...state, ...v })),
-    setH3Cells: (cells) => set({ viewportH3Cells: cells }),
-  })),
+  persist(
+    subscribeWithSelector((set) => ({
+      longitude: 0,
+      latitude: 0.349, // ~20 degrees in radians
+      height: 20_000_000,
+      heading: 0,
+      pitch: -Math.PI / 2,
+      roll: 0,
+      viewportH3Cells: [],
+      setCamera: (v) => set((state) => ({ ...state, ...v })),
+      setH3Cells: (cells) => set({ viewportH3Cells: cells }),
+    })),
+    {
+      name: 'fukan-globe-camera',
+      partialize: ({ longitude, latitude, height, heading, pitch, roll }) => ({
+        longitude, latitude, height, heading, pitch, roll,
+      }),
+    },
+  ),
 )

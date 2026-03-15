@@ -3,8 +3,11 @@ import {
   Viewer,
   Cartesian3,
   createWorldTerrainAsync,
+  UrlTemplateImageryProvider,
+  IonImageryProvider,
   type Viewer as ViewerType,
 } from 'cesium'
+import type { BasemapType } from '~/stores/basemapStore'
 
 export interface CesiumViewerOptions {
   container: string | HTMLElement
@@ -12,8 +15,8 @@ export interface CesiumViewerOptions {
 }
 
 /**
- * Initialize CesiumJS viewer with Cesium Ion terrain and imagery.
- * All default UI widgets are disabled — we render our own React controls.
+ * Initialize CesiumJS viewer with Cesium Ion terrain.
+ * Default imagery is disabled — call setBasemapImagery after creation.
  */
 export async function createViewer({
   container,
@@ -26,6 +29,7 @@ export async function createViewer({
     requestRenderMode: true,
     maximumRenderTimeChange: Infinity,
     terrainProvider: await createWorldTerrainAsync(),
+    baseLayer: false,
     animation: false,
     baseLayerPicker: false,
     fullscreenButton: false,
@@ -44,4 +48,28 @@ export async function createViewer({
   })
 
   return viewer
+}
+
+export async function setBasemapImagery(
+  viewer: ViewerType,
+  type: BasemapType,
+): Promise<void> {
+  viewer.imageryLayers.removeAll()
+
+  if (type === 'map') {
+    viewer.imageryLayers.addImageryProvider(
+      new UrlTemplateImageryProvider({
+        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        subdomains: ['a', 'b', 'c', 'd'],
+        credit: '© CARTO © OpenStreetMap contributors',
+        maximumLevel: 19,
+      }),
+    )
+  } else {
+    viewer.imageryLayers.addImageryProvider(
+      await IonImageryProvider.fromAssetId(2),
+    )
+  }
+
+  viewer.scene.requestRender()
 }
