@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type { AssetType } from '~/types/telemetry'
 
 export type LayerType = AssetType | 'news'
@@ -22,23 +23,31 @@ const defaultLayers: Record<LayerType, LayerConfig> = {
   news: { visible: true, opacity: 1 },
 }
 
-export const useLayerStore = create<LayerState>((set) => ({
-  layers: defaultLayers,
-  toggleLayer: (type) =>
-    set((state) => ({
-      layers: {
-        ...state.layers,
-        [type]: {
-          ...state.layers[type],
-          visible: !state.layers[type].visible,
-        },
-      },
-    })),
-  setOpacity: (type, opacity) =>
-    set((state) => ({
-      layers: {
-        ...state.layers,
-        [type]: { ...state.layers[type], opacity },
-      },
-    })),
-}))
+export const useLayerStore = create<LayerState>()(
+  persist(
+    (set) => ({
+      layers: defaultLayers,
+      toggleLayer: (type) =>
+        set((state) => ({
+          layers: {
+            ...state.layers,
+            [type]: {
+              ...state.layers[type],
+              visible: !state.layers[type].visible,
+            },
+          },
+        })),
+      setOpacity: (type, opacity) =>
+        set((state) => ({
+          layers: {
+            ...state.layers,
+            [type]: { ...state.layers[type], opacity },
+          },
+        })),
+    }),
+    {
+      name: 'fukan-layers',
+      partialize: ({ layers }) => ({ layers }),
+    },
+  ),
+)

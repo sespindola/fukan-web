@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Viewer } from 'cesium'
 import { configureCesiumIon, configureViewer } from './CesiumSetup'
-import { createViewer } from '~/lib/cesium'
+import { createViewer, setBasemapImagery } from '~/lib/cesium'
 import { useViewport } from '~/hooks/useViewport'
 import { useAnyCable } from '~/hooks/useAnyCable'
+import { useBasemapStore } from '~/stores/basemapStore'
 import { AircraftLayer } from './layers/AircraftLayer'
 import { VesselLayer } from './layers/VesselLayer'
 import { SatelliteLayer } from './layers/SatelliteLayer'
 import { BgpLayer } from './layers/BgpLayer'
 import { NewsLayer } from './layers/NewsLayer'
 import { ViewportInfo } from './controls/ViewportInfo'
+import { BasemapToggle } from './controls/BasemapToggle'
 
 interface GlobeViewProps {
   cesiumIonToken: string
@@ -18,6 +20,7 @@ interface GlobeViewProps {
 export function GlobeView({ cesiumIonToken }: GlobeViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [viewer, setViewer] = useState<Viewer | null>(null)
+  const basemap = useBasemapStore((s) => s.basemap)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -38,6 +41,7 @@ export function GlobeView({ cesiumIonToken }: GlobeViewProps) {
       }
 
       configureViewer(v)
+      await setBasemapImagery(v, useBasemapStore.getState().basemap)
       viewerInstance = v
       setViewer(v)
 
@@ -68,6 +72,12 @@ export function GlobeView({ cesiumIonToken }: GlobeViewProps) {
     }
   }, [cesiumIonToken])
 
+  // Switch basemap imagery when toggle changes
+  useEffect(() => {
+    if (!viewer || viewer.isDestroyed()) return
+    setBasemapImagery(viewer, basemap)
+  }, [viewer, basemap])
+
   // Wire up viewport tracking and AnyCable
   useViewport(viewer)
   useAnyCable()
@@ -77,6 +87,9 @@ export function GlobeView({ cesiumIonToken }: GlobeViewProps) {
       <div ref={containerRef} className="h-full w-full" />
       <div className="absolute bottom-4 left-4">
         <ViewportInfo />
+      </div>
+      <div className="absolute bottom-4 right-4">
+        <BasemapToggle />
       </div>
     </div>
   )

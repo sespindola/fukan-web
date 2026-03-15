@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <clipPath id="gc">
+      <circle cx="50" cy="50" r="42"/>
+    </clipPath>
+  </defs>
+
+  <!-- Globe fill -->
+  <circle cx="50" cy="50" r="42" fill="#E1F5EE"/>
+
+  <!-- Lat/lon grid lines clipped to globe -->
+  <g clip-path="url(#gc)" fill="none" stroke="#1D9E75" stroke-width="0.9">
+    <!-- Latitude lines -->
+    <ellipse cx="50" cy="50" rx="42" ry="11"/>
+    <ellipse cx="50" cy="36" rx="37" ry="9"/>
+    <ellipse cx="50" cy="64" rx="37" ry="9"/>
+    <!-- Longitude lines -->
+    <ellipse cx="50" cy="50" rx="8" ry="42"/>
+    <ellipse cx="50" cy="50" rx="34" ry="42"/>
+  </g>
+
+  <!-- Globe border -->
+  <circle cx="50" cy="50" r="42" fill="none" stroke="#0F6E56" stroke-width="1.8"/>
+
+  <!-- Ground assets (small teal dots) -->
+  <circle cx="64" cy="38" r="3.2" fill="#085041"/>
+  <circle cx="32" cy="52" r="3.2" fill="#085041"/>
+  <circle cx="67" cy="63" r="3.2" fill="#085041"/>
+
+  <!-- Orbit arc — back (faint) -->
+  <path d="M43 6 A68 38 -20 0 0 19 88"
+        fill="none" stroke="#5DCAA5" stroke-width="1.4"
+        stroke-dasharray="8 5" opacity="0.35"/>
+
+  <!-- Orbit arc — front (bright) -->
+  <path d="M57 6 A68 38 -20 0 1 81 88"
+        fill="none" stroke="#5DCAA5" stroke-width="1.8"
+        stroke-dasharray="8 5"/>
+
+  <!-- Satellite ping (amber dot + halo) -->
+  <circle cx="82" cy="22" r="11" fill="none" stroke="#EF9F27" stroke-width="1.4" opacity="0.38"/>
+  <circle cx="82" cy="22" r="6" fill="#EF9F27"/>
+</svg>

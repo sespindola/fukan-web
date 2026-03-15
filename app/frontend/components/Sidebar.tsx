@@ -1,5 +1,7 @@
 import { useLayerStore, type LayerType } from '~/stores/layerStore'
 
+import FukanIconUrl from '~/assets/fukan-icon.svg'
+
 interface SidebarProps {
   user?: {
     name: string
@@ -59,7 +61,8 @@ export function Sidebar({ user }: SidebarProps) {
   return (
     <aside className="flex h-full w-56 flex-col border-r border-white/10 bg-gray-950">
       {/* Brand */}
-      <div className="px-5 pt-5 pb-4">
+      <div className="flex items-center gap-3 px-5 pt-5 pb-4">
+        <img src={FukanIconUrl} alt="Fukan logo" className="h-6 w-6" />
         <span className="text-lg font-bold tracking-widest text-white">
           FUKAN
         </span>
