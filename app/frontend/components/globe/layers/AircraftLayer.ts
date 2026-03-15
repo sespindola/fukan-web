@@ -1,6 +1,7 @@
 import {
   BillboardCollection,
   Cartesian3,
+  Color,
   Math as CesiumMath,
   NearFarScalar,
   type Viewer,
@@ -47,6 +48,7 @@ export class AircraftLayer {
           image: '/icons/aircraft.png',
           rotation: CesiumMath.toRadians(-event.hdg),
           scale: 0.5,
+          color: Color.WHITE,
           scaleByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.2),
           translucencyByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.4),
         })
@@ -75,6 +77,7 @@ export class AircraftLayer {
         image: '/icons/aircraft.png',
         rotation: CesiumMath.toRadians(-event.hdg),
         scale: 0.5,
+        color: Color.WHITE,
         scaleByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.2),
         translucencyByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.4),
       })

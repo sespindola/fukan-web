@@ -78,6 +78,15 @@ export function GlobeView({ cesiumIonToken }: GlobeViewProps) {
     setBasemapImagery(viewer, basemap)
   }, [viewer, basemap])
 
+  // Periodically re-render in satellite mode so the day/night terminator updates
+  useEffect(() => {
+    if (!viewer || viewer.isDestroyed() || basemap !== 'satellite') return
+    const id = setInterval(() => {
+      if (!viewer.isDestroyed()) viewer.scene.requestRender()
+    }, 60_000)
+    return () => clearInterval(id)
+  }, [viewer, basemap])
+
   // Wire up viewport tracking and AnyCable
   useViewport(viewer)
   useAnyCable()
