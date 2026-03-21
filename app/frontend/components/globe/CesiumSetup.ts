@@ -1,17 +1,5 @@
-import { Ion, Cartesian3, Math as CesiumMath, HeadingPitchRoll, createWorldTerrainAsync, type Viewer } from 'cesium'
+import { Cartesian3, HeadingPitchRoll, type Viewer } from 'cesium'
 import { useGlobeStore } from '~/stores/globeStore'
-
-export interface ViewerConfig {
-  cesiumIonToken: string
-}
-
-/**
- * Configure Cesium Ion and return viewer constructor options.
- * Call this before creating the Viewer instance.
- */
-export function configureCesiumIon(token: string): void {
-  Ion.defaultAccessToken = token
-}
 
 /**
  * Apply post-creation configuration to the viewer.

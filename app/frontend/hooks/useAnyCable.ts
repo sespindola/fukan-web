@@ -6,17 +6,33 @@ import type { FukanEvent } from '~/types/telemetry'
 
 const consumer = createConsumer()
 
+interface BootstrapMessage {
+  type: 'bootstrap'
+  resolution: number
+  data: FukanEvent[]
+}
+
+function isBootstrap(data: unknown): data is BootstrapMessage {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'type' in data &&
+    (data as BootstrapMessage).type === 'bootstrap'
+  )
+}
+
 /**
  * Manage AnyCable WebSocket connection for live telemetry.
  * Subscribes to telemetry channel filtered by current viewport H3 cells.
+ * Handles bootstrap data (initial positions) and real-time streaming updates.
  */
 export function useAnyCable(): void {
   const subscriptionRef = useRef<Subscription | null>(null)
 
   useEffect(() => {
     const unsubscribe = useGlobeStore.subscribe(
-      (state) => state.viewportH3Cells,
-      (cells: bigint[]) => {
+      (state) => ({ cells: state.viewportH3Cells, resolution: state.viewportResolution }),
+      ({ cells, resolution }) => {
         if (subscriptionRef.current) {
           subscriptionRef.current.unsubscribe()
         }
@@ -27,10 +43,13 @@ export function useAnyCable(): void {
           {
             channel: 'TelemetryChannel',
             h3_cells: h3Strings,
+            resolution,
           },
           {
             received(data: unknown) {
-              if (Array.isArray(data)) {
+              if (isBootstrap(data)) {
+                useStreamStore.getState().upsertBatch(data.data)
+              } else if (Array.isArray(data)) {
                 useStreamStore.getState().upsertBatch(data as FukanEvent[])
               } else {
                 useStreamStore.getState().upsert(data as FukanEvent)
@@ -39,6 +58,7 @@ export function useAnyCable(): void {
           },
         )
       },
+      { equalityFn: (a, b) => a.cells === b.cells && a.resolution === b.resolution },
     )
 
     return () => {

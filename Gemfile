@@ -14,8 +14,10 @@ gem "thruster", require: false
 gem "image_processing", "~> 1.2"
 gem "alba"
 gem "oj"
+gem "grpc"
 gem "alba-inertia"
 gem "anycable-rails"
+gem "clickhouse-activerecord"
 gem "authentication-zero"
 
 group :development, :test do

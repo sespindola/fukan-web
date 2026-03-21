@@ -4,7 +4,6 @@ class ApplicationController < ActionController::Base
 
   inertia_share do
     {
-      cesiumIonToken: ENV.fetch("CESIUM_ION_ACCESS_TOKEN", ""),
       flash: {
         notice: flash[:notice],
         alert: flash[:alert]

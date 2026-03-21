@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Viewer } from 'cesium'
-import { configureCesiumIon, configureViewer } from './CesiumSetup'
+import { configureViewer } from './CesiumSetup'
 import { createViewer, setBasemapImagery } from '~/lib/cesium'
 import { useViewport } from '~/hooks/useViewport'
 import { useAnyCable } from '~/hooks/useAnyCable'
@@ -13,11 +13,7 @@ import { NewsLayer } from './layers/NewsLayer'
 import { ViewportInfo } from './controls/ViewportInfo'
 import { BasemapToggle } from './controls/BasemapToggle'
 
-interface GlobeViewProps {
-  cesiumIonToken: string
-}
-
-export function GlobeView({ cesiumIonToken }: GlobeViewProps) {
+export function GlobeView() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [viewer, setViewer] = useState<Viewer | null>(null)
   const basemap = useBasemapStore((s) => s.basemap)
@@ -28,11 +24,9 @@ export function GlobeView({ cesiumIonToken }: GlobeViewProps) {
     let mounted = true
     let viewerInstance: Viewer | null = null
 
-    async function init() {
-      configureCesiumIon(cesiumIonToken)
-      const v = await createViewer({
+    function init() {
+      const v = createViewer({
         container: containerRef.current!,
-        cesiumIonToken,
       })
 
       if (!mounted) {
@@ -41,7 +35,7 @@ export function GlobeView({ cesiumIonToken }: GlobeViewProps) {
       }
 
       configureViewer(v)
-      await setBasemapImagery(v, useBasemapStore.getState().basemap)
+      setBasemapImagery(v, useBasemapStore.getState().basemap)
       viewerInstance = v
       setViewer(v)
 
@@ -70,7 +64,7 @@ export function GlobeView({ cesiumIonToken }: GlobeViewProps) {
         viewerInstance.destroy()
       }
     }
-  }, [cesiumIonToken])
+  }, [])
 
   // Switch basemap imagery when toggle changes
   useEffect(() => {
@@ -78,9 +72,9 @@ export function GlobeView({ cesiumIonToken }: GlobeViewProps) {
     setBasemapImagery(viewer, basemap)
   }, [viewer, basemap])
 
-  // Periodically re-render in satellite mode so the day/night terminator updates
+  // Periodically re-render so the day/night terminator updates
   useEffect(() => {
-    if (!viewer || viewer.isDestroyed() || basemap !== 'satellite') return
+    if (!viewer || viewer.isDestroyed()) return
     const id = setInterval(() => {
       if (!viewer.isDestroyed()) viewer.scene.requestRender()
     }, 60_000)

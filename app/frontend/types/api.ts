@@ -10,7 +10,6 @@ export interface SharedProps {
     id: number
     name: string
   }
-  cesiumIonToken: string
   flash: {
     notice?: string
     alert?: string

@@ -37,3 +37,4 @@
 /config/*.key
 
 node_modules
+bin/dist

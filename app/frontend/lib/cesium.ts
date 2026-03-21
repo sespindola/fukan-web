@@ -1,10 +1,7 @@
 import {
-  Ion,
   Viewer,
   Cartesian3,
-  createWorldTerrainAsync,
   UrlTemplateImageryProvider,
-  IonImageryProvider,
   WebMapTileServiceImageryProvider,
   WebMercatorTilingScheme,
   type Viewer as ViewerType,
@@ -13,24 +10,20 @@ import type { BasemapType } from '~/stores/basemapStore'
 
 export interface CesiumViewerOptions {
   container: string | HTMLElement
-  cesiumIonToken: string
 }
 
 /**
- * Initialize CesiumJS viewer with Cesium Ion terrain.
+ * Initialize CesiumJS viewer with WGS84 ellipsoid (no terrain).
  * Default imagery is disabled — call setBasemapImagery after creation.
  */
-export async function createViewer({
+export function createViewer({
   container,
-  cesiumIonToken,
-}: CesiumViewerOptions): Promise<ViewerType> {
-  Ion.defaultAccessToken = cesiumIonToken
-
+}: CesiumViewerOptions): ViewerType {
   const viewer = new Viewer(container, {
     scene3DOnly: true,
     requestRenderMode: true,
     maximumRenderTimeChange: Infinity,
-    terrainProvider: await createWorldTerrainAsync(),
+    terrain: undefined,
     baseLayer: false,
     animation: false,
     baseLayerPicker: false,
@@ -52,21 +45,38 @@ export async function createViewer({
   return viewer
 }
 
-export async function setBasemapImagery(
+export function setBasemapImagery(
   viewer: ViewerType,
   type: BasemapType,
-): Promise<void> {
+): void {
   viewer.imageryLayers.removeAll()
 
   if (type === 'map') {
-    viewer.imageryLayers.addImageryProvider(
+    // Day side: CartoDB light
+    const lightLayer = viewer.imageryLayers.addImageryProvider(
       new UrlTemplateImageryProvider({
-        url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+        url: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
         subdomains: ['a', 'b', 'c', 'd'],
         credit: '© CARTO © OpenStreetMap contributors',
         maximumLevel: 19,
       }),
     )
+    lightLayer.dayAlpha = 1.0
+    lightLayer.nightAlpha = 0.0
+
+    // Night side: CartoDB dark
+    const darkLayer = viewer.imageryLayers.addImageryProvider(
+      new UrlTemplateImageryProvider({
+        url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+        subdomains: ['a', 'b', 'c', 'd'],
+        credit: '',
+        maximumLevel: 19,
+      }),
+    )
+    darkLayer.dayAlpha = 0.0
+    darkLayer.nightAlpha = 1.0
+
+    // Labels on top (always visible)
     const labelLayer = viewer.imageryLayers.addImageryProvider(
       new UrlTemplateImageryProvider({
         url: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',
@@ -76,11 +86,18 @@ export async function setBasemapImagery(
       }),
     )
     labelLayer.brightness = 1.5
-    viewer.scene.globe.enableLighting = false
+
+    viewer.scene.globe.enableLighting = true
   } else {
-    viewer.imageryLayers.addImageryProvider(
-      await IonImageryProvider.fromAssetId(2),
+    const baseLayer = viewer.imageryLayers.addImageryProvider(
+      new UrlTemplateImageryProvider({
+        url: 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2021_3857/default/GoogleMapsCompatible/{z}/{y}/{x}.jpg',
+        maximumLevel: 15,
+        credit: 'Sentinel-2 cloudless by EOX – Contains modified Copernicus Sentinel data',
+      }),
     )
+    baseLayer.dayAlpha = 1.0
+    baseLayer.nightAlpha = 0.3
 
     const nightLayer = viewer.imageryLayers.addImageryProvider(
       new WebMapTileServiceImageryProvider({

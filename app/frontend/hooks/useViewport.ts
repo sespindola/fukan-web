@@ -43,7 +43,7 @@ export function useViewport(viewer: Viewer | null): void {
             },
             resolution,
           )
-          useGlobeStore.getState().setH3Cells(cells.map(BigInt))
+          useGlobeStore.getState().setH3Cells(cells.map(BigInt), resolution)
         }
       }, DEBOUNCE_MS)
     }

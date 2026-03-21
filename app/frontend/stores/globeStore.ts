@@ -9,8 +9,9 @@ interface GlobeState {
   pitch: number
   roll: number
   viewportH3Cells: bigint[]
+  viewportResolution: number
   setCamera: (v: Partial<Pick<GlobeState, 'longitude' | 'latitude' | 'height' | 'heading' | 'pitch' | 'roll'>>) => void
-  setH3Cells: (cells: bigint[]) => void
+  setH3Cells: (cells: bigint[], resolution: number) => void
 }
 
 export const useGlobeStore = create<GlobeState>()(
@@ -23,8 +24,9 @@ export const useGlobeStore = create<GlobeState>()(
       pitch: -Math.PI / 2,
       roll: 0,
       viewportH3Cells: [],
+      viewportResolution: 2,
       setCamera: (v) => set((state) => ({ ...state, ...v })),
-      setH3Cells: (cells) => set({ viewportH3Cells: cells }),
+      setH3Cells: (cells, resolution) => set({ viewportH3Cells: cells, viewportResolution: resolution }),
     })),
     {
       name: 'fukan-globe-camera',
