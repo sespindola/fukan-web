@@ -61,7 +61,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: quipr_test
+          POSTGRES_DB: fukan_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -82,7 +82,7 @@ jobs:
     
     env:
       RAILS_ENV: test
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/quipr_test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/fukan_test
       REDIS_URL: redis://localhost:6379/0
     
     steps:

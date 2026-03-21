@@ -68,6 +68,7 @@ ClickHouse = ALL telemetry data (massive, append-only, time-series, READ-ONLY fr
 
 **Never store telemetry in PostgreSQL. Never store user/auth data in ClickHouse.**
 **Rails never writes to ClickHouse. The Go ingest pipeline owns all ClickHouse writes.**
+**ClickHouse is configured with `database_tasks: false` in `database.yml` — Rails skips it for `db:create`, `db:migrate`, `db:schema:load`, and all other database tasks. Schema is managed entirely by `fukan-ingest` (see `scripts/clickhouse-init.sql`).**
 
 ### Multi-Tenancy Rule
 
@@ -851,7 +852,7 @@ bundle exec rspec                          # All specs
 bundle exec rspec spec/models/             # Model specs
 bundle exec rspec spec/services/           # Service specs
 bundle exec rspec spec/requests/           # Request specs
-rails db:migrate                           # PostgreSQL migrations
+rails db:migrate                           # PostgreSQL only (ClickHouse has database_tasks: false)
 
 # React
 npx vitest                                 # All tests
