@@ -20,3 +20,22 @@ export interface AssetDetail {
   history: FukanEvent[]
   metadata: Record<string, unknown>
 }
+
+export interface AircraftMeta {
+  icao24: string
+  registration: string
+  manufacturer_name: string
+  model: string
+  typecode: string
+  icao_aircraft_type: string
+  operator: string
+  operator_callsign: string
+  operator_icao: string
+  operator_iata: string
+  owner: string
+  built: string
+  status: string
+  category_desc: string
+  image_url: string
+  image_attribution: string
+}
