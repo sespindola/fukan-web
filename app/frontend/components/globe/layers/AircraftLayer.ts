@@ -51,6 +51,7 @@ export class AircraftLayer {
           color: Color.WHITE,
           scaleByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.2),
           translucencyByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.4),
+          id,
         })
         this.billboardMap.set(id, this.billboards.length - 1)
       }
@@ -60,6 +61,16 @@ export class AircraftLayer {
     if (activeIds.size < this.billboardMap.size) {
       this.rebuild(aircraft)
     }
+  }
+
+  /** Returns the icao24 id for a picked billboard, or null. */
+  getPickedId(picked: unknown): string | null {
+    if (!picked || typeof picked !== 'object') return null
+    const obj = picked as { id?: string; collection?: unknown }
+    if (obj.collection === this.billboards && typeof obj.id === 'string') {
+      return obj.id
+    }
+    return null
   }
 
   private rebuild(aircraft: Map<string, FukanEvent>): void {
@@ -80,6 +91,7 @@ export class AircraftLayer {
         color: Color.WHITE,
         scaleByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.2),
         translucencyByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.4),
+        id,
       })
       this.billboardMap.set(id, this.billboards.length - 1)
     }

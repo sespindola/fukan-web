@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { useLayerStore, type LayerType } from '~/stores/layerStore'
+import { BasemapToggle } from '~/components/globe/controls/BasemapToggle'
 
 import FukanIconUrl from '~/assets/fukan-icon.svg'
 
@@ -54,6 +56,47 @@ function userInitials(name: string): string {
     .slice(0, 2)
 }
 
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`h-3 w-3 text-white/40 transition-transform ${open ? 'rotate-0' : '-rotate-90'}`}
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <path d="M2 4l4 4 4-4" />
+    </svg>
+  )
+}
+
+function SidebarSection({
+  title,
+  defaultOpen = true,
+  children,
+}: {
+  title: string
+  defaultOpen?: boolean
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <div className="px-4 py-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="mb-3 flex w-full items-center justify-between"
+      >
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-white/40">
+          {title}
+        </h3>
+        <ChevronIcon open={open} />
+      </button>
+      {open && children}
+    </div>
+  )
+}
+
 export function Sidebar({ user }: SidebarProps) {
   const layers = useLayerStore((s) => s.layers)
   const toggleLayer = useLayerStore((s) => s.toggleLayer)
@@ -68,26 +111,29 @@ export function Sidebar({ user }: SidebarProps) {
         </span>
       </div>
 
-      {/* Layers */}
-      <nav className="flex-1 overflow-y-auto px-4 py-4">
-        <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-white/40">
-          Layers
-        </h3>
-        <ul className="space-y-1">
-          {LAYERS.map(({ type, label, color }) => (
-            <li key={type}>
-              <label className="flex cursor-pointer items-center justify-between rounded-md px-2 py-2 text-sm text-white/80 transition-colors hover:bg-white/5">
-                <span>{label}</span>
-                <Toggle
-                  checked={layers[type].visible}
-                  onChange={() => toggleLayer(type)}
-                  color={color}
-                />
-              </label>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      {/* Collapsible sections */}
+      <div className="flex-1 overflow-y-auto">
+        <SidebarSection title="Layers">
+          <ul className="space-y-1">
+            {LAYERS.map(({ type, label, color }) => (
+              <li key={type}>
+                <label className="flex cursor-pointer items-center justify-between rounded-md px-2 py-2 text-sm text-white/80 transition-colors hover:bg-white/5">
+                  <span>{label}</span>
+                  <Toggle
+                    checked={layers[type].visible}
+                    onChange={() => toggleLayer(type)}
+                    color={color}
+                  />
+                </label>
+              </li>
+            ))}
+          </ul>
+        </SidebarSection>
+
+        <SidebarSection title="Basemap">
+          <BasemapToggle />
+        </SidebarSection>
+      </div>
 
       {/* User */}
       <div className="border-t border-white/10 px-4 py-4">

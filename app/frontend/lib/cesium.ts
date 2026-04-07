@@ -6,7 +6,7 @@ import {
   WebMercatorTilingScheme,
   type Viewer as ViewerType,
 } from 'cesium'
-import type { BasemapType } from '~/stores/basemapStore'
+import type { BasemapType, LightingMode } from '~/stores/basemapStore'
 
 export interface CesiumViewerOptions {
   container: string | HTMLElement
@@ -37,6 +37,10 @@ export function createViewer({
     navigationHelpButton: false,
   })
 
+  // Cap zoom: 10 km min (regional analytics focus), 50,000 km max (above GEO orbit)
+  viewer.scene.screenSpaceCameraController.minimumZoomDistance = 10_000
+  viewer.scene.screenSpaceCameraController.maximumZoomDistance = 50_000_000
+
   // Set initial camera view
   viewer.camera.setView({
     destination: Cartesian3.fromDegrees(-35, 40, 10_000_000),
@@ -48,46 +52,54 @@ export function createViewer({
 export function setBasemapImagery(
   viewer: ViewerType,
   type: BasemapType,
+  lighting: LightingMode = 'auto',
 ): void {
   viewer.imageryLayers.removeAll()
 
   if (type === 'map') {
-    // Day side: CartoDB light
+    const maptilerKey = import.meta.env.VITE_MAPTILER_KEY
+
+    // Day: MapTiler Streets v2 (light, English labels, @2x retina)
     const lightLayer = viewer.imageryLayers.addImageryProvider(
       new UrlTemplateImageryProvider({
-        url: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
-        subdomains: ['a', 'b', 'c', 'd'],
-        credit: '© CARTO © OpenStreetMap contributors',
+        url: `https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}@2x.png?key=${maptilerKey}&language=en`,
+        credit: '© MapTiler © OpenStreetMap contributors',
         maximumLevel: 19,
+        tileWidth: 512,
+        tileHeight: 512,
       }),
     )
-    lightLayer.dayAlpha = 1.0
-    lightLayer.nightAlpha = 0.0
 
-    // Night side: CartoDB dark
+    // Night: MapTiler Dark (English labels, @2x retina)
     const darkLayer = viewer.imageryLayers.addImageryProvider(
       new UrlTemplateImageryProvider({
-        url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
-        subdomains: ['a', 'b', 'c', 'd'],
+        url: `https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}@2x.png?key=${maptilerKey}&language=en`,
         credit: '',
         maximumLevel: 19,
+        tileWidth: 512,
+        tileHeight: 512,
       }),
     )
-    darkLayer.dayAlpha = 0.0
-    darkLayer.nightAlpha = 1.0
 
-    // Labels on top (always visible)
-    const labelLayer = viewer.imageryLayers.addImageryProvider(
-      new UrlTemplateImageryProvider({
-        url: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',
-        subdomains: ['a', 'b', 'c', 'd'],
-        credit: '',
-        maximumLevel: 19,
-      }),
-    )
-    labelLayer.brightness = 1.5
-
-    viewer.scene.globe.enableLighting = true
+    if (lighting === 'auto') {
+      lightLayer.show = true
+      lightLayer.dayAlpha = 1.0
+      lightLayer.nightAlpha = 0.0
+      darkLayer.show = true
+      darkLayer.dayAlpha = 0.0
+      darkLayer.nightAlpha = 1.0
+      viewer.scene.globe.enableLighting = true
+    } else if (lighting === 'day') {
+      lightLayer.show = true
+      darkLayer.show = false
+      viewer.scene.globe.enableLighting = false
+    } else {
+      // night — lower brightness to match the shading enableLighting applies in auto mode
+      lightLayer.show = false
+      darkLayer.show = true
+      darkLayer.brightness = 0.2
+      viewer.scene.globe.enableLighting = false
+    }
   } else {
     const baseLayer = viewer.imageryLayers.addImageryProvider(
       new UrlTemplateImageryProvider({
@@ -96,8 +108,6 @@ export function setBasemapImagery(
         credit: 'Sentinel-2 cloudless by EOX – Contains modified Copernicus Sentinel data',
       }),
     )
-    baseLayer.dayAlpha = 1.0
-    baseLayer.nightAlpha = 0.3
 
     const nightLayer = viewer.imageryLayers.addImageryProvider(
       new WebMapTileServiceImageryProvider({
@@ -110,10 +120,26 @@ export function setBasemapImagery(
         credit: 'NASA Earth Observatory',
       }),
     )
-    nightLayer.dayAlpha = 0.0
-    nightLayer.nightAlpha = 1.0
 
-    viewer.scene.globe.enableLighting = true
+    if (lighting === 'auto') {
+      baseLayer.show = true
+      baseLayer.dayAlpha = 1.0
+      baseLayer.nightAlpha = 0.3
+      nightLayer.show = true
+      nightLayer.dayAlpha = 0.0
+      nightLayer.nightAlpha = 1.0
+      viewer.scene.globe.enableLighting = true
+    } else if (lighting === 'day') {
+      baseLayer.show = true
+      nightLayer.show = false
+      viewer.scene.globe.enableLighting = false
+    } else {
+      // night — lower brightness to match the shading enableLighting applies in auto mode
+      baseLayer.show = false
+      nightLayer.show = true
+      nightLayer.brightness = 0.2
+      viewer.scene.globe.enableLighting = false
+    }
   }
 
   viewer.scene.requestRender()

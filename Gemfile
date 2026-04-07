@@ -18,6 +18,7 @@ gem "grpc"
 gem "alba-inertia"
 gem "anycable-rails"
 gem "clickhouse-activerecord"
+gem "aws-sdk-s3"
 gem "authentication-zero"
 
 group :development, :test do
