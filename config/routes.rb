@@ -7,7 +7,7 @@ Rails.application.routes.draw do
   get "inertia-example", to: "inertia_example#index"
 
   namespace :api do
-    resources :aircraft, only: [:show]
+    resources :aircraft, only: [ :show ]
   end
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 
