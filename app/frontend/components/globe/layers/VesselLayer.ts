@@ -86,6 +86,10 @@ export class VesselLayer {
     }
   }
 
+  setVisible(visible: boolean): void {
+    this.billboards.show = visible
+  }
+
   destroy(): void {
     this.viewer.scene.primitives.remove(this.billboards)
   }

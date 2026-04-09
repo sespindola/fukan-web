@@ -4,6 +4,7 @@ import { configureViewer } from './CesiumSetup'
 import { createViewer, setBasemapImagery } from '~/lib/cesium'
 import { useViewport } from '~/hooks/useViewport'
 import { useAnyCable } from '~/hooks/useAnyCable'
+import { useTelemetry, type LayerManagers } from '~/hooks/useTelemetry'
 import { useBasemapStore } from '~/stores/basemapStore'
 import { useSelectionStore } from '~/stores/selectionStore'
 import { AircraftLayer } from './layers/AircraftLayer'
@@ -18,6 +19,7 @@ import { AircraftDetailPanel } from './controls/AircraftDetailPanel'
 export function GlobeView() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [viewer, setViewer] = useState<Viewer | null>(null)
+  const [layers, setLayers] = useState<LayerManagers | null>(null)
   const basemap = useBasemapStore((s) => s.basemap)
   const lighting = useBasemapStore((s) => s.lighting)
 
@@ -43,20 +45,14 @@ export function GlobeView() {
       setViewer(v)
 
       // Initialize imperative layers
-      const aircraft = new AircraftLayer(v)
-      const vessels = new VesselLayer(v)
-      const satellites = new SatelliteLayer(v)
-      const bgp = new BgpLayer(v)
-      const news = new NewsLayer(v)
-
-      // Store layer refs for cleanup (managed internally)
-      ;(v as unknown as Record<string, unknown>).__layers = {
-        aircraft,
-        vessels,
-        satellites,
-        bgp,
-        news,
+      const layerManagers: LayerManagers = {
+        aircraft: new AircraftLayer(v),
+        vessels: new VesselLayer(v),
+        satellites: new SatelliteLayer(v),
+        bgp: new BgpLayer(v),
+        news: new NewsLayer(v),
       }
+      setLayers(layerManagers)
 
       // Click handler for asset selection
       const handler = new ScreenSpaceEventHandler(v.scene.canvas)
@@ -66,7 +62,7 @@ export function GlobeView() {
           useSelectionStore.getState().deselect()
           return
         }
-        const icao24 = aircraft.getPickedId(picked.primitive)
+        const icao24 = layerManagers.aircraft.getPickedId(picked.primitive)
         if (icao24) {
           useSelectionStore.getState().select(icao24, 'aircraft')
         } else {
@@ -103,14 +99,15 @@ export function GlobeView() {
     return () => clearInterval(id)
   }, [viewer, basemap])
 
-  // Wire up viewport tracking and AnyCable
+  // Wire up viewport tracking, AnyCable, and layer updates
   useViewport(viewer)
   useAnyCable()
+  useTelemetry(viewer, layers)
 
   return (
     <div className="absolute inset-0">
       <div ref={containerRef} className="h-full w-full" />
-      <AircraftDetailPanel />
+      <AircraftDetailPanel aircraftLayer={layers?.aircraft ?? null} />
       <div className="absolute bottom-4 left-4">
         <ViewportInfo />
       </div>

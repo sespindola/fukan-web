@@ -167,6 +167,14 @@ export class SatelliteLayer {
     }
   }
 
+  setVisible(visible: boolean): void {
+    this.billboards.show = visible
+    this.orbitLines.show = visible
+    if (this.coveragePrimitive) {
+      this.coveragePrimitive.show = visible
+    }
+  }
+
   destroy(): void {
     this.viewer.scene.primitives.remove(this.billboards)
     this.viewer.scene.primitives.remove(this.orbitLines)

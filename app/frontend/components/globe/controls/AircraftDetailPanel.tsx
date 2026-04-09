@@ -3,11 +3,16 @@ import { useSelectionStore } from '~/stores/selectionStore'
 import { useStreamStore } from '~/stores/streamStore'
 import { decodeLat, decodeLon } from '~/lib/coords'
 import type { AircraftMeta, FukanEvent } from '~/types/telemetry'
+import type { AircraftLayer } from '~/components/globe/layers/AircraftLayer'
 import { createConsumer } from '@rails/actioncable'
 
 const cable = createConsumer()
 
-export function AircraftDetailPanel() {
+interface AircraftDetailPanelProps {
+  aircraftLayer: AircraftLayer | null
+}
+
+export function AircraftDetailPanel({ aircraftLayer }: AircraftDetailPanelProps) {
   const selectedId = useSelectionStore((s) => s.selectedAssetId)
   const selectedType = useSelectionStore((s) => s.selectedAssetType)
   const deselect = useSelectionStore((s) => s.deselect)
@@ -16,11 +21,12 @@ export function AircraftDetailPanel() {
   const [loading, setLoading] = useState(false)
   const [telemetry, setTelemetry] = useState<FukanEvent | null>(null)
 
-  // Fetch metadata from API when an aircraft is selected
+  // Fetch metadata and trail when an aircraft is selected
   useEffect(() => {
     if (!selectedId || selectedType !== 'aircraft') {
       setMeta(null)
       setTelemetry(null)
+      aircraftLayer?.clearTrail()
       return
     }
 
@@ -33,6 +39,18 @@ export function AircraftDetailPanel() {
       })
       .catch(() => setLoading(false))
 
+    // Fetch trail and render on globe
+    if (aircraftLayer) {
+      fetch(`/api/aircraft/${selectedId}/trail`)
+        .then((res) => (res.ok ? res.json() : []))
+        .then((positions: { lat: number; lon: number; alt: number }[]) => {
+          if (positions.length > 0) {
+            aircraftLayer.showTrail(positions)
+          }
+        })
+        .catch(() => {})
+    }
+
     // Read current telemetry from stream store
     const event = useStreamStore.getState().aircraft.get(selectedId)
     if (event) setTelemetry(event)
@@ -43,8 +61,11 @@ export function AircraftDetailPanel() {
       (event) => { if (event) setTelemetry(event) },
     )
 
-    return unsub
-  }, [selectedId, selectedType])
+    return () => {
+      unsub()
+      aircraftLayer?.clearTrail()
+    }
+  }, [selectedId, selectedType, aircraftLayer])
 
   // Subscribe to ActionCable for image updates
   useEffect(() => {

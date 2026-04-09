@@ -17,5 +17,19 @@ module Api
 
       render json: detail
     end
+
+    def trail
+      result = Telemetry::AssetHistory.call(
+        asset_id: params[:id],
+        asset_type: "aircraft"
+      )
+
+      if result.failure?
+        render json: { error: result.error }, status: :unprocessable_entity
+        return
+      end
+
+      render json: result.value
+    end
   end
 end

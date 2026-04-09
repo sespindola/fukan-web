@@ -27,6 +27,11 @@ broadcast_adapters = ["http", "redisx"]
 # make sure to enable pub/sub adapter via the ANYCABLE_PUBSUB_ADAPTER env var
 # pubsub_adapter = "redis" # or "nats"
 
+[ws]
+# Default is 65536 (64KB). Viewport subscriptions with hundreds of H3 cells
+# can exceed this. 512KB is plenty.
+max_message_size = 524288
+
 [logging]
 debug = true
 
@@ -34,9 +39,8 @@ debug = true
 # You only need it if you use custom Action Cable channel classes.
 # Read more: https://docs.anycable.io/anycable-go/rpc
 [rpc]
-# AnyCable is running in a standalone mode.
-# Read more: https://docs.anycable.io/anycable-go/getting_started?id=standalone-mode-pubsub-only
-implementation = "none"
+# gRPC RPC to Rails for custom channel logic (TelemetryChannel, etc.)
+host = "localhost:50051"
 
 
 # Signed and public streams configuration.

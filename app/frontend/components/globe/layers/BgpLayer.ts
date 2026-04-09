@@ -99,6 +99,10 @@ export class BgpLayer {
     }
   }
 
+  setVisible(visible: boolean): void {
+    this.points.show = visible
+  }
+
   destroy(): void {
     this.viewer.scene.primitives.remove(this.points)
   }

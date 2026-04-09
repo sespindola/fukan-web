@@ -13,7 +13,9 @@ module Telemetry
     def call
       return Result.success([]) if @h3_cells.empty?
 
-      rows = @resolution >= 5 ? query_detail : query_aggregate
+      # v1: always return individual positions at all zoom levels (~6k aircraft is cheap).
+      # Aggregate path (query_aggregate) deferred until H3 heatmap renderer is built.
+      rows = query_detail
       Result.success(rows)
     rescue => e
       Result.failure(e.message)

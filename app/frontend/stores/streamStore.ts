@@ -14,6 +14,7 @@ interface StreamState {
   bgp: Map<string, FukanEvent>
   upsert: (event: FukanEvent) => void
   upsertBatch: (events: FukanEvent[]) => void
+  replaceBatch: (events: FukanEvent[]) => void
 }
 
 type MapKey = 'aircraft' | 'vessels' | 'satellites' | 'bgp'
@@ -59,6 +60,23 @@ export const useStreamStore = create<StreamState>()(
         }
 
         return { ...state, ...cloned }
+      }),
+
+    replaceBatch: (events) =>
+      set((state) => {
+        const fresh: Partial<Record<MapKey, Map<string, FukanEvent>>> = {}
+
+        for (const event of events) {
+          const key = mapKeyForType(event.type)
+          if (!key) continue
+
+          if (!fresh[key]) {
+            fresh[key] = new Map()
+          }
+          fresh[key]!.set(event.id, event)
+        }
+
+        return { ...state, ...fresh }
       }),
   })),
 )

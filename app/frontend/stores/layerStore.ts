@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, subscribeWithSelector } from 'zustand/middleware'
 import type { AssetType } from '~/types/telemetry'
 
 export type LayerType = AssetType | 'news'
@@ -24,7 +24,7 @@ const defaultLayers: Record<LayerType, LayerConfig> = {
 }
 
 export const useLayerStore = create<LayerState>()(
-  persist(
+  subscribeWithSelector(persist(
     (set) => ({
       layers: defaultLayers,
       toggleLayer: (type) =>
@@ -49,5 +49,5 @@ export const useLayerStore = create<LayerState>()(
       name: 'fukan-layers',
       partialize: ({ layers }) => ({ layers }),
     },
-  ),
+  )),
 )

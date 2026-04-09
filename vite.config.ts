@@ -26,5 +26,6 @@ export default defineConfig({
   },
   ssr: {
     noExternal: ['@tailwindcss/vite'],
+    external: ['@tailwindcss/oxide', 'lightningcss'],
   },
 })

@@ -71,6 +71,10 @@ export class NewsLayer {
     this.viewer.scene.requestRender()
   }
 
+  setVisible(visible: boolean): void {
+    this.dataSource.show = visible
+  }
+
   destroy(): void {
     this.viewer.dataSources.remove(this.dataSource, true)
   }

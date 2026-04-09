@@ -48,7 +48,7 @@ export function useAnyCable(): void {
           {
             received(data: unknown) {
               if (isBootstrap(data)) {
-                useStreamStore.getState().upsertBatch(data.data)
+                useStreamStore.getState().replaceBatch(data.data)
               } else if (Array.isArray(data)) {
                 useStreamStore.getState().upsertBatch(data as FukanEvent[])
               } else {
