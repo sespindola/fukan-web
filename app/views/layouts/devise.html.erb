@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html class="h-full">
+  <head>
+    <title><%= content_for(:title) || "Fukan" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+
+    <%= vite_stylesheet_tag "application" %>
+    <%= vite_client_tag %>
+
+    <link rel="icon" href="/icon.png" type="image/png">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icon.png">
+  </head>
+
+  <body class="h-full bg-slate-950 text-slate-300 antialiased selection:bg-cyan-500/30">
+    <div class="flex min-h-screen flex-col justify-center px-6 py-12 lg:px-8 relative overflow-hidden">
+      <!-- Background subtle elements -->
+      <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(6,182,212,0.15),transparent_50%)] pointer-events-none"></div>
+      
+      <div class="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
+        <div class="flex justify-center mb-8">
+          <div class="bg-slate-900/40 p-4 rounded-3xl border border-white/5 shadow-2xl backdrop-blur-xl ring-1 ring-white/10 group hover:ring-cyan-500/30 transition-all duration-500">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="64" height="64" class="drop-shadow-[0_0_15px_rgba(93,202,165,0.4)] group-hover:scale-110 transition-transform duration-500">
+              <defs>
+                <clipPath id="gc">
+                  <circle cx="50" cy="50" r="42"/>
+                </clipPath>
+              </defs>
+              <circle cx="50" cy="50" r="42" fill="#E1F5EE" opacity="0.9"/>
+              <g clip-path="url(#gc)" fill="none" stroke="#1D9E75" stroke-width="0.9">
+                <ellipse cx="50" cy="50" rx="42" ry="11"/>
+                <ellipse cx="50" cy="36" rx="37" ry="9"/>
+                <ellipse cx="50" cy="64" rx="37" ry="9"/>
+                <ellipse cx="50" cy="50" rx="8" ry="42"/>
+                <ellipse cx="50" cy="50" rx="34" ry="42"/>
+              </g>
+              <circle cx="50" cy="50" r="42" fill="none" stroke="#0F6E56" stroke-width="1.8"/>
+              <circle cx="64" cy="38" r="3.2" fill="#085041"/>
+              <circle cx="32" cy="52" r="3.2" fill="#085041"/>
+              <circle cx="67" cy="63" r="3.2" fill="#085041"/>
+              <path d="M43 6 A68 38 -20 0 0 19 88" fill="none" stroke="#5DCAA5" stroke-width="1.4" stroke-dasharray="8 5" opacity="0.35"/>
+              <path d="M57 6 A68 38 -20 0 1 81 88" fill="none" stroke="#5DCAA5" stroke-width="1.8" stroke-dasharray="8 5"/>
+              <circle cx="82" cy="22" r="11" fill="none" stroke="#EF9F27" stroke-width="1.4" opacity="0.38"/>
+              <circle cx="82" cy="22" r="6" fill="#EF9F27"/>
+            </svg>
+          </div>
+        </div>
+        <h1 class="text-center text-3xl font-bold tracking-tight text-white mb-2">Fukan</h1>
+        <p class="text-center text-sm text-slate-400 mb-8">Satellite Monitoring & Telemetry Platform</p>
+      </div>
+
+      <div class="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
+        <div class="bg-black/50 border border-white/10 p-8 shadow-2xl sm:rounded-3xl backdrop-blur-2xl ring-1 ring-white/5">
+          <% if notice %>
+            <div class="mb-6 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-3 text-sm text-emerald-400 flex items-center gap-3">
+              <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+              <%= notice %>
+            </div>
+          <% end %>
+          <% if alert %>
+            <div class="mb-6 rounded-xl bg-rose-500/10 border border-rose-500/20 px-4 py-3 text-sm text-rose-400 flex items-center gap-3">
+              <div class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></div>
+              <%= alert %>
+            </div>
+          <% end %>
+          <%= yield %>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

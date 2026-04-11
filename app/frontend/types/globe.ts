@@ -35,11 +35,17 @@ export interface H3ResolutionBand {
   resolution: number
 }
 
+// Bands are tuned so polygonToCells returns at most ~1500 cells at any
+// altitude for a continent-sized viewport, keeping the ActionCable subscribe
+// frame under anycable-go's 64 KB max_message_size. Measured cell counts for
+// an Iberia/Med viewport (34,-10 to 44,15): res 2 = 27, res 3 = 185,
+// res 4 = 1296, res 5 = 9068 — res 5 is too many, so continental zoom uses
+// res 3 and only drops to res 5+ when the viewport is narrow enough.
 export const H3_RESOLUTION_BANDS: H3ResolutionBand[] = [
-  { minHeight: 10_000_000, maxHeight: Infinity, resolution: 2 },
-  { minHeight: 5_000_000, maxHeight: 10_000_000, resolution: 3 },
-  { minHeight: 2_000_000, maxHeight: 5_000_000, resolution: 4 },
-  { minHeight: 500_000, maxHeight: 2_000_000, resolution: 5 },
-  { minHeight: 100_000, maxHeight: 500_000, resolution: 6 },
-  { minHeight: 0, maxHeight: 100_000, resolution: 7 },
+  { minHeight: 5_000_000, maxHeight: Infinity, resolution: 2 },
+  { minHeight: 1_500_000, maxHeight: 5_000_000, resolution: 3 },
+  { minHeight: 300_000, maxHeight: 1_500_000, resolution: 4 },
+  { minHeight: 50_000, maxHeight: 300_000, resolution: 5 },
+  { minHeight: 5_000, maxHeight: 50_000, resolution: 6 },
+  { minHeight: 0, maxHeight: 5_000, resolution: 7 },
 ]

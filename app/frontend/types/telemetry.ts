@@ -4,11 +4,15 @@ export interface FukanEvent {
   ts: number // Unix epoch milliseconds
   id: string // ICAO, MMSI, NORAD, ASN
   type: AssetType
+  callsign: string // flight callsign / vessel name / satellite designator
+  origin: string // origin country, city, airport, port
+  cat: string // wake class / vessel type / satellite regime
   lat: number // Int32 (latitude * 10_000_000) — decode before display
   lon: number // Int32 (longitude * 10_000_000) — decode before display
   alt: number // meters
   spd: number // speed (knots or km/h depending on type)
   hdg: number // heading in degrees
+  vr: number // vertical rate, m/s, positive = climbing
   h3: string // H3 cell as hex string (BigInt in store)
   src: string // provider identifier
   meta: string // JSON blob, type-specific

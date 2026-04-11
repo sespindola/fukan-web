@@ -1,0 +1,53 @@
+<% content_for(:title) { "Settings" } %>
+
+<div class="flex min-h-screen flex-col bg-slate-950 text-slate-300 antialiased">
+  <header class="border-b border-white/10 px-6 py-4">
+    <div class="mx-auto flex max-w-3xl items-center justify-between">
+      <h1 class="text-lg font-semibold text-white">Settings</h1>
+      <%= link_to "Back to Dashboard", root_path, class: "text-sm text-cyan-400 hover:text-cyan-300 transition-colors" %>
+    </div>
+  </header>
+
+  <main class="mx-auto w-full max-w-3xl px-6 py-10">
+    <% if notice %>
+      <div class="mb-6 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-3 text-sm text-emerald-400 flex items-center gap-3">
+        <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+        <%= notice %>
+      </div>
+    <% end %>
+
+    <% if current_user.errors.any? %>
+      <div class="mb-6 rounded-xl bg-rose-500/10 border border-rose-500/20 px-4 py-3 text-sm text-rose-400">
+        <ul class="list-disc pl-4 space-y-1">
+          <% current_user.errors.full_messages.each do |msg| %>
+            <li><%= msg %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <%# Profile section %>
+    <section class="rounded-2xl bg-black/50 border border-white/10 p-6 backdrop-blur">
+      <h2 class="text-base font-semibold text-white mb-6">Profile</h2>
+
+      <%= form_with model: current_user, url: settings_path, method: :patch, class: "space-y-5" do |f| %>
+        <div>
+          <%= f.label :email, class: "block text-sm font-medium text-slate-300 mb-1.5" %>
+          <%= f.email_field :email, class: "block w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-white shadow-sm placeholder:text-slate-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none transition-all duration-200 sm:text-sm" %>
+        </div>
+
+        <div class="flex items-center gap-3 pt-2">
+          <%= f.submit "Save changes", class: "rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-900/20 hover:bg-cyan-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-600 transition-all duration-200 cursor-pointer active:scale-[0.98]" %>
+        </div>
+      <% end %>
+    </section>
+
+    <%# Account section %>
+    <section class="mt-8 rounded-2xl bg-black/50 border border-white/10 p-6 backdrop-blur">
+      <h2 class="text-base font-semibold text-white mb-2">Account</h2>
+      <p class="text-sm text-slate-400 mb-4">Role: <span class="capitalize text-white/80"><%= current_user.role || "member" %></span></p>
+
+      <%= button_to "Log out", destroy_user_session_path, method: :delete, class: "rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm font-medium text-white hover:bg-white/10 transition-all duration-200 cursor-pointer" %>
+    </section>
+  </main>
+</div>

@@ -17,9 +17,12 @@ gem "oj"
 gem "grpc"
 gem "alba-inertia"
 gem "anycable-rails"
+gem "sidekiq"
 gem "clickhouse-activerecord"
 gem "aws-sdk-s3"
 gem "authentication-zero"
+gem "devise"
+gem "devise-argon2"
 
 group :development, :test do
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"

@@ -45,9 +45,9 @@ export class AircraftLayer {
       } else {
         const billboard = this.billboards.add({
           position,
-          image: '/icons/aircraft.png',
+          image: '/icons/aircraft.svg',
           rotation: CesiumMath.toRadians(-event.hdg),
-          scale: 0.5,
+          scale: 1.0,
           color: Color.WHITE,
           scaleByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.2),
           translucencyByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.4),
@@ -85,9 +85,9 @@ export class AircraftLayer {
       )
       this.billboards.add({
         position,
-        image: '/icons/aircraft.png',
+        image: '/icons/aircraft.svg',
         rotation: CesiumMath.toRadians(-event.hdg),
-        scale: 0.5,
+        scale: 1.0,
         color: Color.WHITE,
         scaleByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.2),
         translucencyByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.4),

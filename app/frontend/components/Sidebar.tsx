@@ -1,14 +1,20 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useLayerStore, type LayerType } from '~/stores/layerStore'
+import { useStreamStore } from '~/stores/streamStore'
 import { BasemapToggle } from '~/components/globe/controls/BasemapToggle'
+import type { CurrentUser } from '~/types'
 
 import FukanIconUrl from '~/assets/fukan-icon.svg'
 
 interface SidebarProps {
-  user?: {
-    name: string
-    email: string
-  } | null
+  user?: CurrentUser | null
+}
+
+const STREAM_KEY: Partial<Record<LayerType, 'aircraft' | 'vessels' | 'satellites' | 'bgp'>> = {
+  aircraft: 'aircraft',
+  vessel: 'vessels',
+  satellite: 'satellites',
+  bgp_node: 'bgp',
 }
 
 const LAYERS: { type: LayerType; label: string; color: string }[] = [
@@ -100,6 +106,35 @@ function SidebarSection({
 export function Sidebar({ user }: SidebarProps) {
   const layers = useLayerStore((s) => s.layers)
   const toggleLayer = useLayerStore((s) => s.toggleLayer)
+  const [counts, setCounts] = useState<Record<string, number>>({})
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Close popover on outside click
+  useEffect(() => {
+    if (!menuOpen) return
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [menuOpen])
+
+  useEffect(() => {
+    // Poll stream store sizes on a relaxed interval to avoid hot-path re-renders
+    const id = setInterval(() => {
+      const s = useStreamStore.getState()
+      setCounts({
+        aircraft: s.aircraft.size,
+        vessels: s.vessels.size,
+        satellites: s.satellites.size,
+        bgp: s.bgp.size,
+      })
+    }, 2000)
+    return () => clearInterval(id)
+  }, [])
 
   return (
     <aside className="flex h-full w-56 flex-col border-r border-white/10 bg-gray-950">
@@ -115,10 +150,18 @@ export function Sidebar({ user }: SidebarProps) {
       <div className="flex-1 overflow-y-auto">
         <SidebarSection title="Layers">
           <ul className="space-y-1">
-            {LAYERS.map(({ type, label, color }) => (
+            {LAYERS.map(({ type, label, color }) => {
+              const streamKey = STREAM_KEY[type]
+              const count = streamKey ? counts[streamKey] : undefined
+              return (
               <li key={type}>
                 <label className="flex cursor-pointer items-center justify-between rounded-md px-2 py-2 text-sm text-white/80 transition-colors hover:bg-white/5">
-                  <span>{label}</span>
+                  <span className="flex items-center gap-2">
+                    {label}
+                    {count != null && count > 0 && (
+                      <span className="text-[10px] tabular-nums text-white/40">{count.toLocaleString()}</span>
+                    )}
+                  </span>
                   <Toggle
                     checked={layers[type].visible}
                     onChange={() => toggleLayer(type)}
@@ -126,7 +169,8 @@ export function Sidebar({ user }: SidebarProps) {
                   />
                 </label>
               </li>
-            ))}
+              )
+            })}
           </ul>
         </SidebarSection>
 
@@ -136,20 +180,50 @@ export function Sidebar({ user }: SidebarProps) {
       </div>
 
       {/* User */}
-      <div className="border-t border-white/10 px-4 py-4">
-        <div className="flex items-center gap-3">
+      <div ref={menuRef} className="relative border-t border-white/10 px-4 py-3">
+        <button
+          onClick={() => setMenuOpen((o) => !o)}
+          className="flex w-full items-center gap-3 rounded-md px-1 py-1 transition-colors hover:bg-white/5"
+        >
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-xs font-medium text-white">
-            {userInitials(user?.name ?? 'U')}
+            {userInitials(user?.email ?? 'U')}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 text-left">
             <p className="truncate text-sm font-medium text-white">
-              {user?.name ?? 'Guest'}
+              {user?.email ?? 'Guest'}
             </p>
-            <p className="truncate text-xs text-white/50">
-              {user?.email ?? ''}
+            <p className="truncate text-xs text-white/50 capitalize">
+              {user?.role ?? ''}
             </p>
           </div>
-        </div>
+        </button>
+
+        {menuOpen && (
+          <div className="absolute bottom-full left-4 mb-2 w-44">
+            {/* Popover body */}
+            <div className="rounded-lg bg-white py-1 shadow-lg ring-1 ring-black/10">
+              <a
+                href="/settings"
+                data-turbo="false"
+                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              >
+                Settings
+              </a>
+              <form action="/users/sign_out" method="post">
+                <input type="hidden" name="_method" value="delete" />
+                <input type="hidden" name="authenticity_token" value={document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? ''} />
+                <button
+                  type="submit"
+                  className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  Log out
+                </button>
+              </form>
+            </div>
+            {/* Caret */}
+            <div className="ml-5 h-0 w-0 border-x-[6px] border-t-[6px] border-x-transparent border-t-white" />
+          </div>
+        )}
       </div>
     </aside>
   )

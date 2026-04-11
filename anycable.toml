@@ -11,16 +11,11 @@
 # if you use this configuration file.
 secret = "anycable-local-secret"
 
-# Enable AnyCable power features such as reliable streams, presence and resumable sessions.
-# Read more:
-#  - https://docs.anycable.io/anycable-go/reliable_streams
-#  - https://docs.anycable.io/anycable-go/presence
-presets = ["broker"]
-
 # Broadcasting adapters for app-to-clients messages.
-# You one of the specified adapters in the config/anycable.yml.
+# Redis pub/sub is used because fukan-ingest's batcher publishes directly to
+# the `__anycable__` channel on event arrival (see fukan-ingest/internal/redis/publisher.go).
 # Read more in https://docs.anycable.io/anycable-go/broadcasting.
-broadcast_adapters = ["http", "redisx"]
+broadcast_adapters = ["redis"]
 
 # Pub/sub adapter for inter-node communication in a production cluster
 # IMPORTANT: In production, when running AnyCable in a cluster mode,
@@ -30,13 +25,10 @@ broadcast_adapters = ["http", "redisx"]
 [logging]
 debug = true
 
-# RPC is used to authorized subscriptions and perform channel actions.
-# You only need it if you use custom Action Cable channel classes.
+# RPC talks to the Rails-side anycable server (bundle exec anycable, see Procfile.dev)
+# over gRPC on the default port 50051. It runs TelemetryChannel#subscribed, which
+# registers `stream_from "telemetry:<h3>"` subscriptions for the client's viewport.
 # Read more: https://docs.anycable.io/anycable-go/rpc
-[rpc]
-# AnyCable is running in a standalone mode.
-# Read more: https://docs.anycable.io/anycable-go/getting_started?id=standalone-mode-pubsub-only
-implementation = "none"
 
 
 # Signed and public streams configuration.

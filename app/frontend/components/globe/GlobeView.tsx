@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import { Cartesian2, ScreenSpaceEventHandler, ScreenSpaceEventType, type Viewer } from 'cesium'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { Cartesian2, Cartographic, Math as CesiumMath, ScreenSpaceEventHandler, ScreenSpaceEventType, type Viewer } from 'cesium'
 import { configureViewer } from './CesiumSetup'
 import { createViewer, setBasemapImagery } from '~/lib/cesium'
 import { useViewport } from '~/hooks/useViewport'
 import { useAnyCable } from '~/hooks/useAnyCable'
+import { useTelemetry, type LayerManagers } from '~/hooks/useTelemetry'
 import { useBasemapStore } from '~/stores/basemapStore'
 import { useSelectionStore } from '~/stores/selectionStore'
 import { AircraftLayer } from './layers/AircraftLayer'
@@ -18,6 +19,8 @@ import { AircraftDetailPanel } from './controls/AircraftDetailPanel'
 export function GlobeView() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [viewer, setViewer] = useState<Viewer | null>(null)
+  const [layers, setLayers] = useState<LayerManagers | null>(null)
+  const [loading, setLoading] = useState(true)
   const basemap = useBasemapStore((s) => s.basemap)
   const lighting = useBasemapStore((s) => s.lighting)
 
@@ -49,31 +52,47 @@ export function GlobeView() {
       const bgp = new BgpLayer(v)
       const news = new NewsLayer(v)
 
-      // Store layer refs for cleanup (managed internally)
-      ;(v as unknown as Record<string, unknown>).__layers = {
-        aircraft,
-        vessels,
-        satellites,
-        bgp,
-        news,
-      }
+      setLayers({ aircraft, vessels, satellites, bgp, news })
 
-      // Click handler for asset selection
+      // Input handlers
       const handler = new ScreenSpaceEventHandler(v.scene.canvas)
+
+      // Click: asset selection
       handler.setInputAction((click: { position: Cartesian2 }) => {
         const picked = v.scene.pick(click.position)
         if (!picked?.primitive) {
           useSelectionStore.getState().deselect()
           return
         }
-        const icao24 = aircraft.getPickedId(picked.primitive)
+        const icao24 = aircraft.getPickedId(picked)
         if (icao24) {
           useSelectionStore.getState().select(icao24, 'aircraft')
         } else {
           useSelectionStore.getState().deselect()
         }
       }, ScreenSpaceEventType.LEFT_CLICK)
+
+      // Double-click: fly to position
+      handler.setInputAction((click: { position: Cartesian2 }) => {
+        const cartesian = v.scene.pickPosition(click.position)
+        if (!cartesian) return
+        const carto = Cartographic.fromCartesian(cartesian)
+        v.camera.flyTo({
+          destination: Cartographic.toCartesian(
+            new Cartographic(carto.longitude, carto.latitude, v.camera.positionCartographic.height)
+          ),
+          duration: 1.0,
+        })
+      }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK)
+
+      // Hover: pointer cursor over pickable assets
+      handler.setInputAction((move: { endPosition: Cartesian2 }) => {
+        const picked = v.scene.pick(move.endPosition)
+        ;(v.container as HTMLElement).style.cursor = picked?.primitive ? 'pointer' : ''
+      }, ScreenSpaceEventType.MOUSE_MOVE)
+
       ;(v as unknown as Record<string, unknown>).__clickHandler = handler
+      setLoading(false)
     }
 
     init()
@@ -103,13 +122,22 @@ export function GlobeView() {
     return () => clearInterval(id)
   }, [viewer, basemap])
 
-  // Wire up viewport tracking and AnyCable
+  // Wire up viewport tracking, telemetry subscriptions, and AnyCable
   useViewport(viewer)
+  useTelemetry(viewer, layers)
   useAnyCable()
 
   return (
     <div className="absolute inset-0">
       <div ref={containerRef} className="h-full w-full" />
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-cyan-400" />
+            <span className="text-sm text-white/60">Loading globe…</span>
+          </div>
+        </div>
+      )}
       <AircraftDetailPanel />
       <div className="absolute bottom-4 left-4">
         <ViewportInfo />

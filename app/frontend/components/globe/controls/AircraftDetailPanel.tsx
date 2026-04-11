@@ -131,12 +131,15 @@ export function AircraftDetailPanel() {
       {/* Live Telemetry */}
       {telemetry && (
         <div className="space-y-2 border-t border-white/10 px-4 py-3">
-          <InfoRow label="Altitude" value={`${telemetry.alt.toLocaleString()} m`} />
-          <InfoRow label="Speed" value={`${telemetry.spd.toFixed(0)} kts`} />
-          <InfoRow label="Heading" value={`${telemetry.hdg.toFixed(0)}\u00B0`} />
+          <InfoRow label="Callsign" value={telemetry.callsign} />
+          <InfoRow label="Origin" value={telemetry.origin} />
+          <InfoRow label="Class" value={telemetry.cat} />
+          <InfoRow label="Altitude" value={formatAltitude(num(telemetry.alt), num(telemetry.vr))} />
+          <InfoRow label="Speed" value={`${num(telemetry.spd).toFixed(0)} kts`} />
+          <InfoRow label="Heading" value={`${num(telemetry.hdg).toFixed(0)}\u00B0`} />
           <InfoRow
             label="Position"
-            value={`${decodeLat(telemetry.lat).toFixed(4)}\u00B0, ${decodeLon(telemetry.lon).toFixed(4)}\u00B0`}
+            value={`${decodeLat(num(telemetry.lat)).toFixed(4)}\u00B0, ${decodeLon(num(telemetry.lon)).toFixed(4)}\u00B0`}
           />
           {telemetry.meta && <SquawkRow meta={telemetry.meta} />}
         </div>
@@ -153,6 +156,21 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <span className="text-right text-white/80">{value}</span>
     </div>
   )
+}
+
+// Defensive coercion: bootstrap rows can arrive from the Rails ClickHouse
+// driver as strings for some numeric column types; live broadcasts arrive
+// as JSON numbers from Go. num() normalizes both paths.
+function num(v: unknown): number {
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+function formatAltitude(alt: number, vr: number): string {
+  const base = `${Math.round(alt).toLocaleString()} m`
+  if (!vr) return base
+  const arrow = vr > 0 ? '\u2191' : '\u2193'
+  return `${base} (${arrow} ${Math.abs(vr).toFixed(1)} m/s)`
 }
 
 function SquawkRow({ meta }: { meta: string }) {
