@@ -4,7 +4,7 @@ Rails.application.routes.draw do
   constraints(host: "127.0.0.1") do
     get "(*path)", to: redirect { |params, req| "#{req.protocol}localhost:#{req.port}/#{params[:path]}" }
   end
-  resource :settings, only: [:show, :update], controller: "settings"
+  resource :settings, only: [ :show, :update ], controller: "settings"
   root "dashboard#show"
   get "inertia-example", to: "inertia_example#index"
 

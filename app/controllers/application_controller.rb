@@ -10,7 +10,7 @@ class ApplicationController < ActionController::Base
         notice: flash[:notice],
         alert: flash[:alert]
       },
-      current_user: current_user&.as_json(only: [:id, :email, :role])
+      current_user: current_user&.as_json(only: [ :id, :email, :role ])
     }
   end
 end
