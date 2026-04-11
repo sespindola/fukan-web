@@ -10,12 +10,19 @@ module Api
 
       detail = result.value
 
-      # Enqueue image fetch if not yet cached
-      if detail["image_url"].blank?
+      if detail["image_url"].blank? &&
+         Aircraft::FetchImage.available? &&
+         !negative_image_cache?(params[:id])
         FetchAircraftImageJob.perform_later(params[:id])
       end
 
       render json: detail
+    end
+
+    private
+
+    def negative_image_cache?(icao24)
+      Rails.cache.exist?("aircraft_img_404:#{icao24.to_s.upcase}")
     end
   end
 end

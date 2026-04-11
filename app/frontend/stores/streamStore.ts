@@ -7,11 +7,15 @@ import type { FukanEvent } from '~/types/telemetry'
  * NEVER bind React components directly to this store.
  * Use zustand.subscribe() outside the render cycle for imperative CesiumJS updates.
  */
+type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
+
 interface StreamState {
   aircraft: Map<string, FukanEvent>
   vessels: Map<string, FukanEvent>
   satellites: Map<string, FukanEvent>
   bgp: Map<string, FukanEvent>
+  connectionStatus: ConnectionStatus
+  setConnectionStatus: (status: ConnectionStatus) => void
   upsert: (event: FukanEvent) => void
   upsertBatch: (events: FukanEvent[]) => void
 }
@@ -34,6 +38,8 @@ export const useStreamStore = create<StreamState>()(
     vessels: new Map(),
     satellites: new Map(),
     bgp: new Map(),
+    connectionStatus: 'connecting',
+    setConnectionStatus: (status) => set({ connectionStatus: status }),
 
     upsert: (event) =>
       set((state) => {

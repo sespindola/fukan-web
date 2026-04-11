@@ -1,3 +1,5 @@
 web: bin/rails server -p ${PORT:-3000}
 vite: bin/vite dev
-ws: bin/anycable-go --port 8080
+ws: bin/anycable-go --port 8080 --headers=cookie
+rpc: bundle exec anycable
+worker: bundle exec sidekiq -C config/sidekiq.yml

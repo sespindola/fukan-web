@@ -11,9 +11,9 @@ export function ViewportInfo() {
   }
 
   return (
-    <div className="rounded-lg bg-gray-900/80 px-3 py-2 text-xs text-white/70 backdrop-blur">
+    <div className="rounded-lg bg-gray-900/80 px-3 py-2 text-sm text-white/70 backdrop-blur">
       <span>Alt: {formatHeight(height)}</span>
-      <span className="mx-2">|</span>
+      <span className="mx-2 text-white/30">|</span>
       <span>H3 cells: {cellCount}</span>
     </div>
   )

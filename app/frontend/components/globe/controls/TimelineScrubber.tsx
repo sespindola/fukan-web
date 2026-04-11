@@ -1,4 +1,11 @@
 import { useTimelineStore } from '~/stores/timelineStore'
+import { useStreamStore } from '~/stores/streamStore'
+
+const STATUS_COLORS = {
+  connected: 'bg-emerald-500',
+  connecting: 'bg-amber-500 animate-pulse',
+  disconnected: 'bg-red-500',
+} as const
 
 export function TimelineScrubber() {
   const mode = useTimelineStore((s) => s.mode)
@@ -7,9 +14,11 @@ export function TimelineScrubber() {
   const togglePlay = useTimelineStore((s) => s.togglePlay)
   const goLive = useTimelineStore((s) => s.goLive)
   const setSpeed = useTimelineStore((s) => s.setSpeed)
+  const connectionStatus = useStreamStore((s) => s.connectionStatus)
 
   return (
     <div className="flex items-center gap-3 rounded-lg bg-gray-900/80 px-4 py-2 text-sm text-white backdrop-blur">
+      <span className={`h-2 w-2 rounded-full ${STATUS_COLORS[connectionStatus]}`} title={`Stream: ${connectionStatus}`} />
       {mode === 'live' ? (
         <span className="flex items-center gap-1">
           <span className="h-2 w-2 rounded-full bg-red-500" />

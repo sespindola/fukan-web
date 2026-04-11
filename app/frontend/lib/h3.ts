@@ -28,7 +28,9 @@ export function viewportToH3Cells(
   const east = toDeg(rect.east)
   const north = toDeg(rect.north)
 
-  // Build polygon ring (counter-clockwise)
+  // Build polygon ring in h3-js native [lat, lng] order (isGeoJson=false).
+  // Passing isGeoJson=true would interpret the pairs as [lng, lat] and flip the
+  // viewport across lat=lng, producing cells in the wrong hemisphere.
   const polygon: [number, number][] = [
     [south, west],
     [south, east],
@@ -37,5 +39,5 @@ export function viewportToH3Cells(
     [south, west],
   ]
 
-  return polygonToCells(polygon, resolution, true)
+  return polygonToCells(polygon, resolution, false)
 }

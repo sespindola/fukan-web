@@ -37,15 +37,34 @@ export function useAnyCable(): void {
           subscriptionRef.current.unsubscribe()
         }
 
-        const h3Strings = cells.map(String)
+        // Defensive cap so the ActionCable subscribe frame stays under
+        // anycable-go's default 64 KB max_message_size. The H3 resolution
+        // bands in types/globe.ts are tuned to keep polygonToCells under
+        // ~1500 cells at any altitude, so this cap should almost never trip.
+        // 2000 cells at ~20 bytes each ≈ 40 KB, comfortably under 64 KB.
+        const MAX_SUBSCRIBE_CELLS = 2_000
+        const cappedCells = cells.length > MAX_SUBSCRIBE_CELLS
+          ? cells.slice(0, MAX_SUBSCRIBE_CELLS)
+          : cells
+
+        useStreamStore.getState().setConnectionStatus('connecting')
 
         subscriptionRef.current = consumer.subscriptions.create(
           {
             channel: 'TelemetryChannel',
-            h3_cells: h3Strings,
+            h3_cells: cappedCells,
             resolution,
           },
           {
+            connected() {
+              useStreamStore.getState().setConnectionStatus('connected')
+            },
+            disconnected() {
+              useStreamStore.getState().setConnectionStatus('disconnected')
+            },
+            rejected() {
+              useStreamStore.getState().setConnectionStatus('disconnected')
+            },
             received(data: unknown) {
               if (isBootstrap(data)) {
                 useStreamStore.getState().upsertBatch(data.data)

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!--
+    Aircraft icon pointing up (0°). AircraftLayer rotates by -event.hdg so 0°
+    at source = north. Cyan fill + dark outline keeps it visible on both the
+    satellite basemap and the dark map basemap.
+  -->
+  <path
+    d="M24 4 L27 22 L44 28 L27 30 L27 40 L31 42 L31 44 L24 42 L17 44 L17 42 L21 40 L21 30 L4 28 L21 22 Z"
+    fill="#22d3ee"
+    stroke="#0c1220"
+    stroke-width="1.5"
+    stroke-linejoin="round"
+  />
+</svg>

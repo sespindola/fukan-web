@@ -8,7 +8,7 @@ import type { BgpLayer } from '~/components/globe/layers/BgpLayer'
 import type { NewsLayer } from '~/components/globe/layers/NewsLayer'
 import type { FukanEvent } from '~/types/telemetry'
 
-interface LayerManagers {
+export interface LayerManagers {
   aircraft: AircraftLayer
   vessels: VesselLayer
   satellites: SatelliteLayer
