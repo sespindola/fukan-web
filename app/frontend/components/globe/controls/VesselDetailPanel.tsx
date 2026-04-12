@@ -57,7 +57,7 @@ export function VesselDetailPanel() {
       {telemetry && (
         <div className="space-y-2 border-b border-white/10 px-4 py-3">
           <InfoRow label="Ship Type" value={telemetry.ship_type} />
-          <InfoRow label="IMO" value={telemetry.imo ? String(telemetry.imo) : undefined} />
+          <InfoRow label="IMO" value={telemetry.imo_number ? String(telemetry.imo_number) : undefined} />
           <InfoRow label="Nav Status" value={formatNavStatus(telemetry.nav_status)} />
           <InfoRow label="Destination" value={telemetry.destination} />
           <InfoRow label="Draught" value={telemetry.draught ? `${num(telemetry.draught).toFixed(1)} m` : undefined} />
@@ -73,8 +73,8 @@ export function VesselDetailPanel() {
             label="Position"
             value={`${decodeLat(num(telemetry.lat)).toFixed(4)}\u00B0, ${decodeLon(num(telemetry.lon)).toFixed(4)}\u00B0`}
           />
-          {telemetry.rot !== undefined && num(telemetry.rot) !== 0 && (
-            <InfoRow label="Rate of Turn" value={`${num(telemetry.rot).toFixed(1)}\u00B0/min`} />
+          {telemetry.rate_of_turn !== undefined && num(telemetry.rate_of_turn) !== 0 && (
+            <InfoRow label="Rate of Turn" value={`${num(telemetry.rate_of_turn).toFixed(1)}\u00B0/min`} />
           )}
         </div>
       )}

@@ -43,7 +43,7 @@ export class AircraftLayer {
         billboard.position = position
         billboard.rotation = CesiumMath.toRadians(-event.hdg)
       } else {
-        const billboard = this.billboards.add({
+        this.billboards.add({
           position,
           image: '/icons/aircraft.svg',
           rotation: CesiumMath.toRadians(-event.hdg),

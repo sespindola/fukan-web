@@ -1,4 +1,3 @@
-import '@tailwindcss/vite'
 import { createInertiaApp } from '@inertiajs/react'
 import { createRoot } from 'react-dom/client'
 import './application.css'

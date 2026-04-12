@@ -1,30 +1,41 @@
 import {
   BillboardCollection,
-  PolylineCollection,
   Cartesian3,
   Color,
-  NearFarScalar,
   Material,
+  NearFarScalar,
+  PolylineCollection,
   type Viewer,
   EllipseGeometry,
   GeometryInstance,
   GroundPrimitive,
   ColorGeometryInstanceAttribute,
-  Math as CesiumMath,
 } from 'cesium'
 import type { FukanEvent } from '~/types/telemetry'
 import { decodeLat, decodeLon } from '~/lib/coords'
-import { coverageRadiusMeters, SENSOR_HALF_ANGLES } from '~/lib/orbitMath'
+import {
+  computeOrbitPath,
+  coverageRadiusMeters,
+  getHalfAngle,
+} from '~/lib/orbitMath'
+import { useStreamStore } from '~/stores/streamStore'
+
+/** Satellite layer tint — distinct from aircraft/vessel white billboards. */
+const SAT_COLOR = Color.CYAN
 
 /**
- * Imperative layer manager for satellite positions, orbit paths, and coverage footprints.
- * Satellites are rendered at true orbital altitude.
+ * Imperative layer manager for satellite positions, orbit paths, and
+ * coverage footprints. Satellites are rendered at true orbital altitude.
  *
- * - Billboards: satellite position at orbital height
- * - PolylineCollection: orbit paths (server-computed positions)
- * - GroundPrimitive: coverage footprint (EllipseGeometry draped on terrain)
+ * - Billboards: satellite position at orbital height (pickable)
+ * - PolylineCollection: inclined great-circle orbit approximation for the
+ *   selected satellite. Not SGP4-accurate — see computeOrbitPath() in
+ *   ~/lib/orbitMath for the model and its caveats.
+ * - GroundPrimitive: estimated coverage footprint draped on terrain
  *
- * Coverage cones and orbit paths are only shown for the selected satellite.
+ * Orbit + coverage are only drawn for the selected satellite. Both
+ * redraw automatically when the selected satellite's position updates
+ * so the orbit stays anchored to the live billboard.
  */
 export class SatelliteLayer {
   private viewer: Viewer
@@ -60,11 +71,12 @@ export class SatelliteLayer {
       } else {
         this.billboards.add({
           position,
-          image: '/icons/satellite.png',
-          scale: 0.4,
-          color: Color.WHITE,
+          image: '/icons/satellite.svg',
+          scale: 0.6,
+          color: SAT_COLOR,
           scaleByDistance: new NearFarScalar(1e5, 1.0, 5e7, 0.3),
           translucencyByDistance: new NearFarScalar(1e5, 1.0, 5e7, 0.5),
+          id,
         })
         this.billboardMap.set(id, this.billboards.length - 1)
       }
@@ -73,51 +85,78 @@ export class SatelliteLayer {
     if (activeIds.size < this.billboardMap.size) {
       this.rebuild(satellites)
     }
+
+    // Refresh the orbit/coverage for the selected satellite if it just
+    // received a new position. computeOrbitPath is cheap (~180 trig ops),
+    // and this keeps the drawn orbit line anchored to the billboard even
+    // as the satellite propagates around.
+    if (this.selectedId && activeIds.has(this.selectedId)) {
+      this.drawDetails(this.selectedId)
+    }
+  }
+
+  /** Returns the NORAD id for a picked billboard, or null. */
+  getPickedId(picked: unknown): string | null {
+    if (!picked || typeof picked !== 'object') return null
+    const obj = picked as { id?: string; collection?: unknown }
+    if (obj.collection === this.billboards && typeof obj.id === 'string') {
+      return obj.id
+    }
+    return null
   }
 
   /**
-   * Show orbit path and coverage cone for a selected satellite.
-   * @param id - Satellite NORAD ID, or null to clear
-   * @param orbitPositions - Array of [lon, lat, alt] for orbit path
+   * Mark a satellite as selected (or deselect). Draws the inclined
+   * great-circle orbit approximation + estimated coverage footprint.
+   * Both are ESTIMATES — see computeOrbitPath() and getHalfAngle().
    */
-  showDetails(
-    id: string | null,
-    orbitPositions?: [number, number, number][],
-  ): void {
-    // Clear previous
+  showDetails(id: string | null): void {
+    this.selectedId = id
+    this.drawDetails(id)
+  }
+
+  /** Draw (or clear) orbit + cone for the given id. */
+  private drawDetails(id: string | null): void {
     this.orbitLines.removeAll()
     if (this.coveragePrimitive) {
       this.viewer.scene.primitives.remove(this.coveragePrimitive)
       this.coveragePrimitive = null
     }
 
-    this.selectedId = id
-    if (!id) return
+    if (!id) {
+      this.viewer.scene.requestRender()
+      return
+    }
 
-    // Draw orbit path if positions provided
+    const event = this.findEvent(id)
+    if (!event) {
+      this.viewer.scene.requestRender()
+      return
+    }
+
+    // Orbit line — inclined great circle through current sub-satellite
+    // point. Requires the satellite event to carry inclination (populated
+    // by the Go TLE worker on every propagation).
+    const orbitPositions = computeOrbitPath(event)
     if (orbitPositions && orbitPositions.length > 1) {
-      const positions = orbitPositions.map(([lon, lat, alt]) =>
-        Cartesian3.fromDegrees(lon, lat, alt),
-      )
       this.orbitLines.add({
-        positions,
+        positions: orbitPositions,
         width: 1.5,
         material: Material.fromType('Color', {
-          color: Color.CYAN.withAlpha(0.6),
+          color: SAT_COLOR.withAlpha(0.7),
         }),
       })
     }
 
-    // Draw coverage footprint
-    const event = this.findEvent(id)
-    if (event) {
-      const halfAngle = SENSOR_HALF_ANGLES.imaging_leo // default
-      const radius = coverageRadiusMeters(event.alt, halfAngle)
+    // Coverage footprint — classifier-estimated sensor half-angle +
+    // 10° elevation mask (see coverageRadiusMeters / getHalfAngle).
+    const { halfAngleDeg } = getHalfAngle(null, event)
+    const radius = coverageRadiusMeters(event.alt, halfAngleDeg)
+    if (radius > 0) {
       const center = Cartesian3.fromDegrees(
         decodeLon(event.lon),
         decodeLat(event.lat),
       )
-
       const instance = new GeometryInstance({
         geometry: new EllipseGeometry({
           center,
@@ -126,11 +165,10 @@ export class SatelliteLayer {
         }),
         attributes: {
           color: ColorGeometryInstanceAttribute.fromColor(
-            Color.CYAN.withAlpha(0.15),
+            SAT_COLOR.withAlpha(0.15),
           ),
         },
       })
-
       this.coveragePrimitive = this.viewer.scene.primitives.add(
         new GroundPrimitive({ geometryInstances: instance }),
       )
@@ -140,8 +178,8 @@ export class SatelliteLayer {
   }
 
   private findEvent(id: string): FukanEvent | undefined {
-    // Access from streamStore directly (outside React)
-    const { useStreamStore } = require('~/stores/streamStore')
+    // Read current telemetry directly from the stream store — this class
+    // is driven imperatively, outside the React render cycle.
     return useStreamStore.getState().satellites.get(id)
   }
 
@@ -157,11 +195,12 @@ export class SatelliteLayer {
       )
       this.billboards.add({
         position,
-        image: '/icons/satellite.png',
-        scale: 0.4,
+        image: '/icons/satellite.svg',
+        scale: 0.6,
         color: Color.WHITE,
         scaleByDistance: new NearFarScalar(1e5, 1.0, 5e7, 0.3),
         translucencyByDistance: new NearFarScalar(1e5, 1.0, 5e7, 0.5),
+        id,
       })
       this.billboardMap.set(id, this.billboards.length - 1)
     }

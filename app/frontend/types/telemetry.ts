@@ -17,11 +17,23 @@ export interface FukanEvent {
   src: string // provider identifier
   squawk: string // transponder squawk code (aircraft only)
   nav_status?: string // vessel navigation status (under_way, at_anchor, moored, etc.)
-  imo?: number // IMO number (vessel only)
+  imo_number?: number // IMO number (vessel only)
   ship_type?: string // vessel type classification
   destination?: string // reported destination port (vessel only)
   draught?: number // vessel draught in meters
-  rot?: number // rate of turn, degrees/minute (vessel only)
+  rate_of_turn?: number // degrees/minute (vessel only)
+
+  // Satellite-specific — populated by the TLE worker, carried on every
+  // broadcast so the frontend can render orbit + coverage geometry
+  // without waiting for a separate metadata fetch.
+  inclination?: number // degrees
+  orbit_regime?: string // 'leo' | 'meo' | 'geo' | 'heo'
+  period_minutes?: number
+  apogee_km?: number
+  perigee_km?: number
+  tle_epoch?: number // Unix epoch milliseconds of the TLE used to propagate
+  confidence?: string // 'official' | 'community_derived' | 'stale'
+  sat_status?: string // 'maneuvering' | 'decaying' | ''
 }
 
 export interface AssetDetail {
@@ -47,4 +59,27 @@ export interface AircraftMeta {
   category_desc: string
   image_url: string
   image_attribution: string
+}
+
+/**
+ * Satellite metadata sourced from fukan.satellite_meta (ClickHouse).
+ *
+ * These are the fields GCAT (Jonathan McDowell's satcat.tsv) actually
+ * provides — identity, country/operator, launch, physical parameters,
+ * apogee/perigee/inclination. Full Keplerian orientation (eccentricity,
+ * RAAN, arg of perigee, mean anomaly) is NOT in GCAT and would require
+ * a separate TLE-sourced table to enable precise orbit-ellipse rendering.
+ */
+export interface SatelliteMeta {
+  norad_id: string
+  name: string
+  object_type: string // 'payload' | 'rocket body' | 'debris' | ...
+  status: string // 'active' | 'decayed' | ...
+  country: string
+  operator: string
+  launch_date: string
+  mass_kg: number
+  inclination_deg: number
+  apogee_km: number
+  perigee_km: number
 }

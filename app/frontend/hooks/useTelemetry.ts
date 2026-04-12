@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import type { Viewer } from 'cesium'
 import { useStreamStore } from '~/stores/streamStore'
 import { useLayerStore } from '~/stores/layerStore'
+import { useSelectionStore } from '~/stores/selectionStore'
 import type { AircraftLayer } from '~/components/globe/layers/AircraftLayer'
 import type { VesselLayer } from '~/components/globe/layers/VesselLayer'
 import type { SatelliteLayer } from '~/components/globe/layers/SatelliteLayer'
@@ -67,6 +68,17 @@ export function useTelemetry(
         layers.satellites.setVisible(state.layers.satellite.visible)
         layers.bgp.setVisible(state.layers.bgp_node.visible)
         layers.news.setVisible(state.layers.news.visible)
+        viewer.scene.requestRender()
+      }),
+
+      // Satellite selection → draw/clear the estimated coverage footprint.
+      useSelectionStore.subscribe((state) => {
+        if (state.selectedAssetType !== 'satellite') {
+          layers.satellites.showDetails(null)
+          viewer.scene.requestRender()
+          return
+        }
+        layers.satellites.showDetails(state.selectedAssetId)
         viewer.scene.requestRender()
       }),
     ]

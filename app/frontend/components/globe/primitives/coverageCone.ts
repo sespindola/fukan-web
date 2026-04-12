@@ -4,22 +4,26 @@ import {
   PolylineCollection,
   Material,
 } from 'cesium'
-import { decodeLat, decodeLon, toRadians } from '~/lib/coords'
-import { coverageRadiusMeters, SENSOR_HALF_ANGLES } from '~/lib/orbitMath'
+import { toRadians } from '~/lib/coords'
+import { coverageRadiusMeters } from '~/lib/orbitMath'
 
 const CONE_SEGMENTS = 16
 
 /**
  * Build visual cone outline polylines from satellite position to footprint circle edge.
  * Returns positions arrays for each spoke of the cone.
+ *
+ * Not currently wired — reserved for the optional "visual cone effect"
+ * described in AGENTS.md. Callers should pass the half-angle in degrees
+ * (matching the rest of the coverage math in ~/lib/orbitMath).
  */
 export function buildConeSpokes(
   satLonDeg: number,
   satLatDeg: number,
   satAltMeters: number,
-  halfAngleRad: number = SENSOR_HALF_ANGLES.imaging_leo,
+  halfAngleDeg: number,
 ): Cartesian3[][] {
-  const radiusMeters = coverageRadiusMeters(satAltMeters, halfAngleRad)
+  const radiusMeters = coverageRadiusMeters(satAltMeters, halfAngleDeg)
   const satPosition = Cartesian3.fromDegrees(satLonDeg, satLatDeg, satAltMeters)
 
   const spokes: Cartesian3[][] = []

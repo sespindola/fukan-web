@@ -10,6 +10,7 @@ Rails.application.routes.draw do
 
   namespace :api do
     resources :aircraft, only: [ :show ]
+    resources :satellites, only: [ :show ]
   end
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 

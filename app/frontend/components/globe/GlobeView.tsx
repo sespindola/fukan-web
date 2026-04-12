@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { Cartesian2, Cartographic, Math as CesiumMath, ScreenSpaceEventHandler, ScreenSpaceEventType, type Viewer } from 'cesium'
+import { useEffect, useRef, useState } from 'react'
+import { Cartesian2, Cartographic, ScreenSpaceEventHandler, ScreenSpaceEventType, type Viewer } from 'cesium'
 import { configureViewer } from './CesiumSetup'
 import { createViewer, setBasemapImagery } from '~/lib/cesium'
 import { useViewport } from '~/hooks/useViewport'
@@ -16,6 +16,7 @@ import { ViewportInfo } from './controls/ViewportInfo'
 import { Attribution } from './controls/Attribution'
 import { AircraftDetailPanel } from './controls/AircraftDetailPanel'
 import { VesselDetailPanel } from './controls/VesselDetailPanel'
+import { SatelliteDetailPanel } from './controls/SatelliteDetailPanel'
 
 export function GlobeView() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -73,6 +74,11 @@ export function GlobeView() {
         const mmsi = vessels.getPickedId(picked)
         if (mmsi) {
           useSelectionStore.getState().select(mmsi, 'vessel')
+          return
+        }
+        const norad = satellites.getPickedId(picked)
+        if (norad) {
+          useSelectionStore.getState().select(norad, 'satellite')
           return
         }
         useSelectionStore.getState().deselect()
@@ -146,6 +152,7 @@ export function GlobeView() {
       )}
       <AircraftDetailPanel />
       <VesselDetailPanel />
+      <SatelliteDetailPanel />
       <div className="absolute bottom-4 left-4">
         <ViewportInfo />
       </div>
