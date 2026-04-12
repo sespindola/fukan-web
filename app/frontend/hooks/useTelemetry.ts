@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { Viewer } from 'cesium'
 import { useStreamStore } from '~/stores/streamStore'
+import { useLayerStore } from '~/stores/layerStore'
 import type { AircraftLayer } from '~/components/globe/layers/AircraftLayer'
 import type { VesselLayer } from '~/components/globe/layers/VesselLayer'
 import type { SatelliteLayer } from '~/components/globe/layers/SatelliteLayer'
@@ -18,6 +19,7 @@ export interface LayerManagers {
 
 /**
  * Wire up streamStore subscriptions to imperative CesiumJS layer managers.
+ * Also subscribes to layerStore to toggle visibility of each layer.
  * Updates happen outside React render cycle.
  */
 export function useTelemetry(
@@ -28,6 +30,7 @@ export function useTelemetry(
     if (!viewer || !layers) return
 
     const unsubs = [
+      // Data subscriptions
       useStreamStore.subscribe(
         (state) => state.aircraft,
         (data: Map<string, FukanEvent>) => {
@@ -56,7 +59,25 @@ export function useTelemetry(
           viewer.scene.requestRender()
         },
       ),
+
+      // Visibility subscriptions
+      useLayerStore.subscribe((state) => {
+        layers.aircraft.setVisible(state.layers.aircraft.visible)
+        layers.vessels.setVisible(state.layers.vessel.visible)
+        layers.satellites.setVisible(state.layers.satellite.visible)
+        layers.bgp.setVisible(state.layers.bgp_node.visible)
+        layers.news.setVisible(state.layers.news.visible)
+        viewer.scene.requestRender()
+      }),
     ]
+
+    // Apply initial visibility from persisted store
+    const { layers: initial } = useLayerStore.getState()
+    layers.aircraft.setVisible(initial.aircraft.visible)
+    layers.vessels.setVisible(initial.vessel.visible)
+    layers.satellites.setVisible(initial.satellite.visible)
+    layers.bgp.setVisible(initial.bgp_node.visible)
+    layers.news.setVisible(initial.news.visible)
 
     return () => {
       unsubs.forEach((fn) => fn())

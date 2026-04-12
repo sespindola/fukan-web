@@ -15,6 +15,7 @@ import { NewsLayer } from './layers/NewsLayer'
 import { ViewportInfo } from './controls/ViewportInfo'
 import { Attribution } from './controls/Attribution'
 import { AircraftDetailPanel } from './controls/AircraftDetailPanel'
+import { VesselDetailPanel } from './controls/VesselDetailPanel'
 
 export function GlobeView() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -67,9 +68,14 @@ export function GlobeView() {
         const icao24 = aircraft.getPickedId(picked)
         if (icao24) {
           useSelectionStore.getState().select(icao24, 'aircraft')
-        } else {
-          useSelectionStore.getState().deselect()
+          return
         }
+        const mmsi = vessels.getPickedId(picked)
+        if (mmsi) {
+          useSelectionStore.getState().select(mmsi, 'vessel')
+          return
+        }
+        useSelectionStore.getState().deselect()
       }, ScreenSpaceEventType.LEFT_CLICK)
 
       // Double-click: fly to position
@@ -139,6 +145,7 @@ export function GlobeView() {
         </div>
       )}
       <AircraftDetailPanel />
+      <VesselDetailPanel />
       <div className="absolute bottom-4 left-4">
         <ViewportInfo />
       </div>

@@ -64,14 +64,20 @@ module Telemetry
           toFloat64(heading)                   AS hdg,
           toFloat64(vertical_rate)             AS vr,
           h3_cell,
-          source                               AS src
+          source                               AS src,
+          squawk,
+          nav_status,
+          toUInt32(imo_number)                  AS imo,
+          ship_type,
+          destination,
+          toFloat64(draught)                    AS draught,
+          toFloat64(rate_of_turn)               AS rot
         FROM fukan.telemetry_latest_flat
         WHERE h3ToParent(h3_cell, #{@resolution.to_i}) IN (#{cells_list})
       SQL
 
       rows.each do |row|
         row["h3"] = row.delete("h3_cell").to_i.to_s(16)
-        row["meta"] = ""
       end
       rows
     end
