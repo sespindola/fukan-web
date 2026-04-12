@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!--
+    Satellite icon: central bus with two solar panels and a dish.
+    Cyan fill + dark outline to match the aircraft/vessel icon style.
+    Not rotated by heading (satellites don't have a meaningful heading
+    from the ground-track POV).
+  -->
+  <g fill="#22d3ee" stroke="#0c1220" stroke-width="1.5" stroke-linejoin="round">
+    <!-- Left solar panel -->
+    <rect x="4" y="18" width="14" height="12" />
+    <!-- Right solar panel -->
+    <rect x="30" y="18" width="14" height="12" />
+    <!-- Central bus -->
+    <rect x="19" y="16" width="10" height="16" />
+    <!-- Dish -->
+    <circle cx="24" cy="10" r="4" />
+    <!-- Antenna stub -->
+    <line x1="24" y1="14" x2="24" y2="16" stroke-width="2" />
+  </g>
+</svg>

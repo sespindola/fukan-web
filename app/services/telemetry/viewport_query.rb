@@ -49,6 +49,11 @@ module Telemetry
       # SQL because clickhouse-activerecord has no native Float32 mapping and
       # returns those columns as Strings, which then break `toFixed` etc. on
       # the frontend. Int32 lat/lon/alt are cast to Int64 for the same reason.
+      # Column aliases MUST match the Go model.FukanEvent JSON tags
+      # (see fukan-ingest internal/model/event.go). Any drift means the
+      # bootstrap payload and the live-broadcast payload disagree on field
+      # names, so frontend consumers like VesselDetailPanel /
+      # SatelliteDetailPanel / computeOrbitPath silently read undefined.
       rows = Clickhouse.connection.exec_query(<<~SQL).to_a
         SELECT
           asset_id                             AS id,
@@ -67,11 +72,19 @@ module Telemetry
           source                               AS src,
           squawk,
           nav_status,
-          toUInt32(imo_number)                  AS imo,
+          toUInt32(imo_number)                  AS imo_number,
           ship_type,
           destination,
           toFloat64(draught)                    AS draught,
-          toFloat64(rate_of_turn)               AS rot
+          toFloat64(rate_of_turn)               AS rate_of_turn,
+          orbit_regime,
+          toFloat64(inclination)               AS inclination,
+          toFloat64(period_minutes)            AS period_minutes,
+          toFloat64(apogee_km)                 AS apogee_km,
+          toFloat64(perigee_km)                AS perigee_km,
+          toUnixTimestamp64Milli(tle_epoch)    AS tle_epoch,
+          confidence,
+          sat_status
         FROM fukan.telemetry_latest_flat
         WHERE h3ToParent(h3_cell, #{@resolution.to_i}) IN (#{cells_list})
       SQL

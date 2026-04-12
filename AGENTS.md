@@ -2,7 +2,7 @@
 
 > AI coding assistant context file for the Rails + React web layer.
 > Read fully before generating any code.
-> Last updated: 2026-03-05
+> Last updated: 2026-04-12
 
 ---
 
@@ -351,7 +351,7 @@ app/frontend/
 │   ├── h3.ts                           # H3 utility functions
 │   ├── cesium.ts                       # CesiumJS setup and config
 │   ├── coords.ts                       # Int32 ↔ Float coordinate conversion
-│   ├── orbitMath.ts                    # Coverage radius, orbit calculations
+│   ├── orbitMath.ts                    # Coverage geometry (elevation-masked), sensor half-angle classifier, inclined-circle orbit approximation
 │   └── api.ts                          # Inertia router helpers
 ├── pages/                              # Inertia page components
 │   ├── Dashboard.tsx                   # Main globe page
@@ -566,7 +566,22 @@ class DashboardController < ApplicationController
 end
 ```
 
-### ClickHouse Query Pattern
+### ClickHouse Query Pattern — bootstrap shape
+
+The `Telemetry::ViewportQuery` service is the entry point for initial page
+load. It reads from `telemetry_latest_flat` (the argMax-merge view over
+`telemetry_latest`) and returns rows in the **exact JSON shape of the
+live broadcast** so `streamStore.upsert` can't tell the difference
+between bootstrap events and live AnyCable events.
+
+**Critical invariant:** the column aliases in `query_detail`'s SELECT
+MUST track the `json:"..."` tags on Go's `model.FukanEvent` struct in
+`fukan-ingest/internal/model/event.go`. Any drift means bootstrap and
+live events disagree on field names — detail panels and client-side
+computation (e.g. `computeOrbitPath()` reading `event.inclination`) will
+silently read `undefined` and features will appear broken on initial
+load but "fix themselves" after the first live update 30-120s later.
+This has bitten us multiple times — grep for "schema drift" in memory.
 
 ```ruby
 # app/services/telemetry/viewport_query.rb
@@ -574,36 +589,59 @@ module Telemetry
   class ViewportQuery
     include Callable
 
-    def initialize(h3_cells:, asset_types:, since: 5.minutes.ago)
-      @h3_cells = h3_cells
-      @asset_types = asset_types
-      @since = since
+    MAX_CELLS = 2_000
+    RESOLUTION_RANGE = (2..7)
+    DETAIL_MIN_RESOLUTION = 3
+
+    def initialize(h3_cells:, resolution:)
+      @h3_cells = Array(h3_cells).first(MAX_CELLS)
+      @resolution = resolution.clamp(RESOLUTION_RANGE)
     end
 
     def call
-      result = clickhouse.select_all(<<~SQL, h3_cells:, asset_types:, since:)
-        SELECT asset_id, asset_type, lat, lon, alt, speed, heading, metadata
-        FROM telemetry_latest FINAL
-        WHERE h3_cell IN {h3_cells: Array(UInt64)}
-          AND asset_type IN {asset_types: Array(String)}
-          AND timestamp > {since: DateTime}
-      SQL
-      Result.success(result)
-    rescue ClickHouse::QueryError => e
+      return Result.success([]) if @h3_cells.empty?
+      rows = @resolution >= DETAIL_MIN_RESOLUTION ? query_detail : query_aggregate
+      Result.success(rows)
+    rescue => e
       Result.failure(e.message)
     end
 
     private
 
-    def clickhouse
-      @clickhouse ||= ClickHouse::Connection.new(
-        url: ENV.fetch("CLICKHOUSE_URL"),
-        database: "fukan"
-      )
+    def query_detail
+      # Column aliases MUST match Go model.FukanEvent JSON tags exactly.
+      # toFloat64 / toInt64 casts are there because clickhouse-activerecord
+      # returns Float32 / Int32 as Strings, which break `.toFixed` etc.
+      # on the frontend.
+      rows = Clickhouse.connection.exec_query(<<~SQL).to_a
+        SELECT
+          asset_id                             AS id,
+          asset_type                           AS type,
+          toUnixTimestamp64Milli(event_time)   AS ts,
+          callsign,
+          origin,
+          category                             AS cat,
+          toInt64(lat)                         AS lat,
+          toInt64(lon)                         AS lon,
+          toInt64(alt)                         AS alt,
+          toFloat64(speed)                     AS spd,
+          -- ...plus every other FukanEvent field, aliased to match the Go JSON tag
+          toFloat64(inclination)               AS inclination,
+          toFloat64(apogee_km)                 AS apogee_km,
+          -- ...
+        FROM fukan.telemetry_latest_flat
+        WHERE h3ToParent(h3_cell, #{@resolution.to_i}) IN (#{cells_list})
+      SQL
+      rows.each { |r| r["h3"] = r.delete("h3_cell").to_i.to_s(16) }
+      rows
     end
   end
 end
 ```
+
+A 3s Rails cache wrapper (`Telemetry::CachedViewportQuery`) sits in front
+of this service so repeated subscribes from the same viewport don't
+hammer ClickHouse. The cache key is `{resolution}:{sha256(sorted_cells)}`.
 
 ---
 
@@ -679,35 +717,92 @@ viewer.camera.setView({
 
 ### Asset Layer Rendering (CesiumJS Primitive API)
 
-| Asset      | Cesium API                  | Position                          | Notes                                      |
-|------------|-----------------------------|-----------------------------------|--------------------------------------------|
-| Aircraft   | `BillboardCollection`       | `fromDegrees(lon, lat, alt)`      | Rotated by heading, `NearFarScalar` scaling |
-| Vessels    | `BillboardCollection`       | `fromDegrees(lon, lat, 0)` clamped| Ship icon rotated by heading               |
-| Satellites | `BillboardCollection` + `PolylineCollection` + `GroundPrimitive` | `fromDegrees(lon, lat, orbitalAlt)` | True altitude (LEO 200-2k km, GEO 35786km) |
-| BGP        | `PointPrimitiveCollection`  | Clamped to ground                 | Color by event type, arcs via `PolylineCollection` |
-| News       | `CustomDataSource` + `EntityCluster` | Clamped to ground          | Built-in clustering, lower frequency       |
+| Asset      | Cesium API                  | Position                          | Notes                                                                        |
+|------------|-----------------------------|-----------------------------------|------------------------------------------------------------------------------|
+| Aircraft   | `BillboardCollection`       | `fromDegrees(lon, lat, alt)`      | White tint, rotated by heading, `NearFarScalar` scaling                      |
+| Vessels    | `BillboardCollection`       | `fromDegrees(lon, lat, 0)` clamped| White tint, ship icon rotated by heading                                     |
+| Satellites | `BillboardCollection` + `PolylineCollection` + `GroundPrimitive` | `fromDegrees(lon, lat, orbitalAlt)` | **Cyan tint** (`SAT_COLOR`) to distinguish from aircraft/vessels. True orbital altitude. |
+| BGP        | `PointPrimitiveCollection`  | Clamped to ground                 | Color by event type, arcs via `PolylineCollection`                           |
+| News       | `CustomDataSource` + `EntityCluster` | Clamped to ground          | Built-in clustering, lower frequency                                         |
 
 All layers subscribe to `streamStore` slices via `zustand.subscribe()` outside React — no re-renders.
 
 ### Satellite 3D Features
 
-**Orbit paths:** `PolylineCollection` with positions at orbital altitude. Server-computed via SGP4 in Go ingest pipeline (stored in ClickHouse), queried by Rails. ~180 points per satellite (90 min at 30s intervals).
+**Orbit paths:** `PolylineCollection` drawing an **inclined great-circle
+approximation** of the orbital plane through the satellite's current
+sub-satellite point. Computed client-side in `~/lib/orbitMath.ts`
+(`computeOrbitPath(event)`) from only two inputs:
+- The live `event.inclination` field (populated by the Go TLE worker on
+  every SGP4 propagation and carried on every broadcast)
+- The current ECEF position from the same event
 
-**Coverage footprints:** `GroundPrimitive` with `EllipseGeometry` draped on terrain. Radius from formula:
+The function builds an orthonormal basis `(U = P̂, V = N × U)` where the
+plane normal `N` satisfies `N · P = 0` and `N · Z = cos(i)`, then samples
+181 closed-loop points at constant radius `|P|`. Auto-refreshes in
+`SatelliteLayer.update()` whenever the selected satellite's position
+changes, so the orbit stays anchored to the live billboard.
+
+**Explicit limitations** (surface these honestly if users ask):
+- **Not a ground track** — a static ECEF snapshot of the orbital plane,
+  Earth rotation is ignored.
+- **Not SGP4-accurate** — no J2 precession, no atmospheric drag, no
+  eccentricity. Molniya / GTO orbits diverge from the drawn circle.
+- **Arbitrary ascending/descending choice** — without a velocity vector
+  there are two valid planes through `P` at inclination `i`; the code
+  consistently picks the positive-cosine branch, so half of satellites
+  have a mirrored-tilt orbit that still passes through `P` correctly.
+
+**Upgrade path** — full Keplerian elements in a new TLE-sourced
+`satellite_orbit` ClickHouse table (eccentricity, RAAN, arg of perigee,
+mean anomaly). Documented in `fukan-ingest/docs/PLAN.md` as Path B; not
+implemented.
+
+**Coverage footprints:** `GroundPrimitive` with `EllipseGeometry` draped
+on terrain, cyan-tinted with low alpha. Radius is the minimum of two
+geometric constraints:
 
 ```
-θ = arcsin((R + h) * sin(α) / R) - α
-where R = 6371km, h = altitude, α = sensor half-angle
+Sensor-limited:    θ_sensor    = asin((R + h) × sin(α) / R) − α
+Elevation-masked:  θ_elevation = acos(R × cos(ε) / (R + h)) − ε
+
+radius_km = R × min(θ_sensor, θ_elevation)
 ```
 
-Default half-angles by type (estimates — surface as ESTIMATES in UI):
-- Imaging LEO: ~1.5° (~10-50km swath)
-- Communications GEO: ~8.7° (Earth-disk)
-- Weather LEO: ~55° (~2000km swath)
+where `R = 6371 km`, `h = current altitude`, `α = sensor half-angle
+estimate`, and `ε = 10°` (the `COVERAGE_ELEVATION_MASK_DEG` constant).
+The elevation mask excludes users below ~10° to account for atmospheric
+signal degradation — which cuts LEO comms footprints roughly in half
+vs the horizon-grazing formula alone.
 
-**Coverage cones (optional):** 8-16 polylines from satellite position to footprint circle edge for visual cone effect.
+**Sensor half-angle classification** (`getHalfAngle()` in `orbitMath.ts`)
+returns `{halfAngleDeg, label, confidence}` by matching satellite name
+patterns against seven classes, because GCAT doesn't provide sensor
+specs and most operator datasheets don't either:
 
-**Display logic:** Coverage cones/orbit paths only shown for selected satellite or filtered constellation — not all satellites simultaneously.
+| Match rule | α | Confidence | Example class |
+|---|---|---|---|
+| Altitude > 30,000 km | 8.7° | high | Comms GEO (Earth disc) |
+| Name matches GPS/NAVSTAR/GALILEO/GLONASS/BEIDOU/QZSS | 13.8° | high | Navigation MEO |
+| Name matches NOAA/GOES/METOP/HIMAWARI/FENGYUN/DMSP/METEOSAT | 55° | medium | Weather LEO |
+| Name matches LANDSAT/SENTINEL/WORLDVIEW/PLEIADES/ICEYE/TERRASAR/COSMO-SKYMED/RADARSAT | 3° | medium | Imaging LEO |
+| Name matches STARLINK/ONEWEB/IRIDIUM/GLOBALSTAR/KUIPER/ORBCOMM/SWARM | 55° | medium | Comms LEO |
+| Name matches ISS/ZARYA/TIANHE/MIR | 90° (horizon) | low | Crewed station |
+| default | 45° | low | LEO (estimated) |
+
+**UI rule:** The detail panel surfaces coverage with an explicit ESTIMATE
+badge and a footnote explaining the 10° elevation mask and that real
+payloads may use spot beams or steered sensors that a single-cone
+visualization can't capture. See `SatelliteDetailPanel.tsx`.
+
+**Coverage cones (optional):** A `buildConeSpokes()` helper exists at
+`components/globe/primitives/coverageCone.ts` for the visual cone effect
+(8–16 polylines from satellite position to footprint edge), but it's
+not currently wired into `SatelliteLayer`. Reserved for future use.
+
+**Display logic:** Orbit + coverage are only drawn for the *selected*
+satellite — drawing them for all satellites is visually noisy and
+expensive.
 
 ### Viewport Filtering for 3D Camera
 
