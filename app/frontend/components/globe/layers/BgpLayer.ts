@@ -1,11 +1,8 @@
 import {
   PointPrimitiveCollection,
-  PolylineCollection,
   Cartesian3,
   Color,
   NearFarScalar,
-  Material,
-  HeightReference,
   type Viewer,
 } from 'cesium'
 import type { FukanEvent } from '~/types/telemetry'
@@ -43,8 +40,7 @@ export class BgpLayer {
         0,
       )
 
-      const eventType = this.parseEventType(event.meta)
-      const color = EVENT_COLORS[eventType] ?? Color.WHITE
+      const color = EVENT_COLORS[event.cat] ?? Color.WHITE
 
       const existingIndex = this.pointMap.get(id)
       if (existingIndex !== undefined) {
@@ -67,15 +63,6 @@ export class BgpLayer {
     }
   }
 
-  private parseEventType(meta: string): string {
-    try {
-      const parsed = JSON.parse(meta)
-      return parsed.event_type ?? 'announcement'
-    } catch {
-      return 'announcement'
-    }
-  }
-
   private rebuild(bgpEvents: Map<string, FukanEvent>): void {
     this.points.removeAll()
     this.pointMap.clear()
@@ -86,8 +73,7 @@ export class BgpLayer {
         decodeLat(event.lat),
         0,
       )
-      const eventType = this.parseEventType(event.meta)
-      const color = EVENT_COLORS[eventType] ?? Color.WHITE
+      const color = EVENT_COLORS[event.cat] ?? Color.WHITE
 
       this.points.add({
         position,
@@ -97,6 +83,10 @@ export class BgpLayer {
       })
       this.pointMap.set(id, this.points.length - 1)
     }
+  }
+
+  setVisible(visible: boolean): void {
+    this.points.show = visible
   }
 
   destroy(): void {

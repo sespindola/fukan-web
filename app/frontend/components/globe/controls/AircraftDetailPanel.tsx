@@ -141,7 +141,7 @@ export function AircraftDetailPanel() {
             label="Position"
             value={`${decodeLat(num(telemetry.lat)).toFixed(4)}\u00B0, ${decodeLon(num(telemetry.lon)).toFixed(4)}\u00B0`}
           />
-          {telemetry.meta && <SquawkRow meta={telemetry.meta} />}
+          {telemetry.squawk && <InfoRow label="Squawk" value={telemetry.squawk} />}
         </div>
       )}
     </div>
@@ -173,12 +173,3 @@ function formatAltitude(alt: number, vr: number): string {
   return `${base} (${arrow} ${Math.abs(vr).toFixed(1)} m/s)`
 }
 
-function SquawkRow({ meta }: { meta: string }) {
-  try {
-    const parsed = JSON.parse(meta)
-    if (!parsed.squawk) return null
-    return <InfoRow label="Squawk" value={parsed.squawk} />
-  } catch {
-    return null
-  }
-}

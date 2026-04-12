@@ -45,13 +45,14 @@ export class VesselLayer {
       } else {
         this.billboards.add({
           position,
-          image: '/icons/vessel.png',
+          image: '/icons/vessel.svg',
           rotation: CesiumMath.toRadians(-event.hdg),
-          scale: 0.4,
+          scale: 0.8,
           color: Color.WHITE,
           heightReference: HeightReference.CLAMP_TO_GROUND,
           scaleByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.2),
           translucencyByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.4),
+          id,
         })
         this.billboardMap.set(id, this.billboards.length - 1)
       }
@@ -74,16 +75,30 @@ export class VesselLayer {
       )
       this.billboards.add({
         position,
-        image: '/icons/vessel.png',
+        image: '/icons/vessel.svg',
         rotation: CesiumMath.toRadians(-event.hdg),
-        scale: 0.4,
+        scale: 0.8,
         color: Color.WHITE,
         heightReference: HeightReference.CLAMP_TO_GROUND,
         scaleByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.2),
         translucencyByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.4),
+        id,
       })
       this.billboardMap.set(id, this.billboards.length - 1)
     }
+  }
+
+  getPickedId(picked: unknown): string | null {
+    if (!picked || typeof picked !== 'object') return null
+    const obj = picked as { id?: string; collection?: unknown }
+    if (obj.collection === this.billboards && typeof obj.id === 'string') {
+      return obj.id
+    }
+    return null
+  }
+
+  setVisible(visible: boolean): void {
+    this.billboards.show = visible
   }
 
   destroy(): void {

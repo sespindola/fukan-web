@@ -15,14 +15,19 @@ export interface FukanEvent {
   vr: number // vertical rate, m/s, positive = climbing
   h3: string // H3 cell as hex string (BigInt in store)
   src: string // provider identifier
-  meta: string // JSON blob, type-specific
+  squawk: string // transponder squawk code (aircraft only)
+  nav_status?: string // vessel navigation status (under_way, at_anchor, moored, etc.)
+  imo?: number // IMO number (vessel only)
+  ship_type?: string // vessel type classification
+  destination?: string // reported destination port (vessel only)
+  draught?: number // vessel draught in meters
+  rot?: number // rate of turn, degrees/minute (vessel only)
 }
 
 export interface AssetDetail {
   id: string
   type: AssetType
   history: FukanEvent[]
-  metadata: Record<string, unknown>
 }
 
 export interface AircraftMeta {
