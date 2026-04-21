@@ -1,8 +1,15 @@
+// `bgp_node` stays in AssetType because it's used throughout the UI as a
+// category: layer toggle (layerStore.layers.bgp_node), selection
+// (selectionStore.selectedAssetType), and the globe click handler in
+// GlobeView.tsx. It does NOT appear as FukanEvent.type — BGP data
+// flows through BgpEvent, the bgp_events ClickHouse table, the
+// fukan.bgp.events NATS subject, and the BgpEventsChannel AnyCable
+// stream. See stores/bgpEventStore.ts.
 export type AssetType = 'aircraft' | 'vessel' | 'satellite' | 'bgp_node'
 
 export interface FukanEvent {
   ts: number // Unix epoch milliseconds
-  id: string // ICAO, MMSI, NORAD, ASN
+  id: string // ICAO, MMSI, NORAD
   type: AssetType
   callsign: string // flight callsign / vessel name / satellite designator
   origin: string // origin country, city, airport, port
@@ -34,6 +41,37 @@ export interface FukanEvent {
   tle_epoch?: number // Unix epoch milliseconds of the TLE used to propagate
   confidence?: string // 'official' | 'community_derived' | 'stale'
   sat_status?: string // 'maneuvering' | 'decaying' | ''
+}
+
+/**
+ * BGP routing event: a discrete announcement, withdrawal, hijack, or
+ * route leak observed on the RIPE RIS Live stream. Unlike FukanEvent,
+ * each BgpEvent is a one-time happening — there is no "latest BGP event
+ * per ASN". See stores/bgpEventStore.ts for the bounded time-windowed
+ * client store.
+ *
+ * SCHEMA DRIFT HAZARD: these field names MUST match the Go model.BgpEvent
+ * struct `json:"..."` tags (fukan-ingest/internal/model/bgp_event.go)
+ * AND the column aliases in Bgp::ViewportQuery
+ * (app/services/bgp/viewport_query.rb). Drift means bootstrap and live
+ * broadcast disagree on field names and BgpDetailPanel / BgpLayer
+ * silently read undefined.
+ */
+export interface BgpEvent {
+  ts: number // Unix epoch milliseconds
+  id: string // fnv64 hash of (ts|prefix|category|originAS)
+  cat: string // 'announcement' | 'withdrawal' | 'hijack' | 'leak'
+  prefix: string // CIDR, e.g. '8.8.8.0/24'
+  origin_as: number // AS currently announcing the prefix (from RIS Live)
+  prefix_as: number // registered holder AS (GeoLite2-ASN prefix lookup); may differ from origin_as on hijacks
+  prefix_org: string // registered holder org name; empty when MMDB has no record
+  as_path: number[] // full AS-path hops
+  path_coords: number[] // alternating scaled-Int32 lat/lon pairs, one per resolved hop
+  collector: string // RIS collector ID, e.g. 'rrc00'
+  lat: number // Int32 (latitude * 10_000_000)
+  lon: number // Int32 (longitude * 10_000_000)
+  h3: string // H3 cell as hex string (publisher-side res 7; broadcast at res 3)
+  src: string // provider identifier, e.g. 'ris-live'
 }
 
 export interface AssetDetail {

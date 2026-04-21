@@ -6,6 +6,10 @@ import type { FukanEvent } from '~/types/telemetry'
  * WARNING: Updated at high frequency.
  * NEVER bind React components directly to this store.
  * Use zustand.subscribe() outside the render cycle for imperative CesiumJS updates.
+ *
+ * BGP events do NOT live here — they have their own store (bgpEventStore)
+ * because they are event-stream data with different retention semantics
+ * than moving-asset state.
  */
 type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
 
@@ -13,21 +17,19 @@ interface StreamState {
   aircraft: Map<string, FukanEvent>
   vessels: Map<string, FukanEvent>
   satellites: Map<string, FukanEvent>
-  bgp: Map<string, FukanEvent>
   connectionStatus: ConnectionStatus
   setConnectionStatus: (status: ConnectionStatus) => void
   upsert: (event: FukanEvent) => void
   upsertBatch: (events: FukanEvent[]) => void
 }
 
-type MapKey = 'aircraft' | 'vessels' | 'satellites' | 'bgp'
+type MapKey = 'aircraft' | 'vessels' | 'satellites'
 
 function mapKeyForType(type: string): MapKey | undefined {
   switch (type) {
     case 'aircraft': return 'aircraft'
     case 'vessel': return 'vessels'
     case 'satellite': return 'satellites'
-    case 'bgp_node': return 'bgp'
     default: return undefined
   }
 }
@@ -37,7 +39,6 @@ export const useStreamStore = create<StreamState>()(
     aircraft: new Map(),
     vessels: new Map(),
     satellites: new Map(),
-    bgp: new Map(),
     connectionStatus: 'connecting',
     setConnectionStatus: (status) => set({ connectionStatus: status }),
 

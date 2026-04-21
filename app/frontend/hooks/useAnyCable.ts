@@ -1,41 +1,69 @@
 import { useEffect, useRef } from 'react'
 import { createConsumer, type Subscription } from '@rails/actioncable'
 import { useStreamStore } from '~/stores/streamStore'
+import { useBgpEventStore } from '~/stores/bgpEventStore'
 import { useGlobeStore } from '~/stores/globeStore'
-import type { FukanEvent } from '~/types/telemetry'
+import { cellsToParents } from '~/lib/h3'
+import type { FukanEvent, BgpEvent } from '~/types/telemetry'
 
 const consumer = createConsumer()
 
-interface BootstrapMessage {
+// Resolution BGP events are broadcast at by fukan-ingest
+// (internal/redis/publisher.go). Must stay in sync.
+const BGP_SUBSCRIBE_RESOLUTION = 3
+
+interface TelemetryBootstrap {
   type: 'bootstrap'
   resolution: number
   data: FukanEvent[]
 }
 
-function isBootstrap(data: unknown): data is BootstrapMessage {
+interface BgpBootstrap {
+  type: 'bootstrap'
+  data: BgpEvent[]
+}
+
+function isTelemetryBootstrap(data: unknown): data is TelemetryBootstrap {
   return (
     typeof data === 'object' &&
     data !== null &&
     'type' in data &&
-    (data as BootstrapMessage).type === 'bootstrap'
+    (data as TelemetryBootstrap).type === 'bootstrap'
+  )
+}
+
+function isBgpBootstrap(data: unknown): data is BgpBootstrap {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'type' in data &&
+    (data as BgpBootstrap).type === 'bootstrap'
   )
 }
 
 /**
- * Manage AnyCable WebSocket connection for live telemetry.
- * Subscribes to telemetry channel filtered by current viewport H3 cells.
- * Handles bootstrap data (initial positions) and real-time streaming updates.
+ * Manage AnyCable WebSocket subscriptions for live telemetry + BGP events.
+ *
+ * Two parallel channels:
+ *   - TelemetryChannel streams aircraft/vessel/satellite events at the
+ *     viewport's current H3 resolution band (2–7 depending on altitude).
+ *   - BgpEventsChannel streams BGP events at a fixed coarse resolution
+ *     (3) regardless of zoom, because BGP event coordinates are imprecise
+ *     enough that zoom-band-precise subscriptions would be misleading.
+ *
+ * Both subscriptions recreate together on every viewport change so their
+ * cell sets stay consistent during fast pans.
  */
 export function useAnyCable(): void {
-  const subscriptionRef = useRef<Subscription | null>(null)
+  const telemetryRef = useRef<Subscription | null>(null)
+  const bgpRef = useRef<Subscription | null>(null)
 
   useEffect(() => {
     const unsubscribe = useGlobeStore.subscribe(
       (state) => ({ cells: state.viewportH3Cells, resolution: state.viewportResolution }),
       ({ cells, resolution }) => {
-        if (subscriptionRef.current) {
-          subscriptionRef.current.unsubscribe()
-        }
+        telemetryRef.current?.unsubscribe()
+        bgpRef.current?.unsubscribe()
 
         // Defensive cap so the ActionCable subscribe frame stays under
         // anycable-go's default 64 KB max_message_size. The H3 resolution
@@ -49,7 +77,7 @@ export function useAnyCable(): void {
 
         useStreamStore.getState().setConnectionStatus('connecting')
 
-        subscriptionRef.current = consumer.subscriptions.create(
+        telemetryRef.current = consumer.subscriptions.create(
           {
             channel: 'TelemetryChannel',
             h3_cells: cappedCells,
@@ -66,12 +94,35 @@ export function useAnyCable(): void {
               useStreamStore.getState().setConnectionStatus('disconnected')
             },
             received(data: unknown) {
-              if (isBootstrap(data)) {
+              if (isTelemetryBootstrap(data)) {
                 useStreamStore.getState().upsertBatch(data.data)
               } else if (Array.isArray(data)) {
                 useStreamStore.getState().upsertBatch(data as FukanEvent[])
               } else {
                 useStreamStore.getState().upsert(data as FukanEvent)
+              }
+            },
+          },
+        )
+
+        // BGP: subscribe using res-3 parents of the current viewport. The
+        // parent set is usually much smaller than the viewport at res 5+
+        // and roughly matches at res 2–3.
+        const bgpCells = cellsToParents(cappedCells, BGP_SUBSCRIBE_RESOLUTION)
+
+        bgpRef.current = consumer.subscriptions.create(
+          {
+            channel: 'BgpEventsChannel',
+            h3_cells: bgpCells,
+          },
+          {
+            received(data: unknown) {
+              if (isBgpBootstrap(data)) {
+                useBgpEventStore.getState().upsertBatch(data.data)
+              } else if (Array.isArray(data)) {
+                useBgpEventStore.getState().upsertBatch(data as BgpEvent[])
+              } else {
+                useBgpEventStore.getState().upsert(data as BgpEvent)
               }
             },
           },
@@ -82,7 +133,8 @@ export function useAnyCable(): void {
 
     return () => {
       unsubscribe()
-      subscriptionRef.current?.unsubscribe()
+      telemetryRef.current?.unsubscribe()
+      bgpRef.current?.unsubscribe()
     }
   }, [])
 }

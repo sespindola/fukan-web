@@ -17,6 +17,7 @@ import { Attribution } from './controls/Attribution'
 import { AircraftDetailPanel } from './controls/AircraftDetailPanel'
 import { VesselDetailPanel } from './controls/VesselDetailPanel'
 import { SatelliteDetailPanel } from './controls/SatelliteDetailPanel'
+import { BgpDetailPanel } from './controls/BgpDetailPanel'
 
 export function GlobeView() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -79,6 +80,11 @@ export function GlobeView() {
         const norad = satellites.getPickedId(picked)
         if (norad) {
           useSelectionStore.getState().select(norad, 'satellite')
+          return
+        }
+        const bgpId = bgp.getPickedId(picked)
+        if (bgpId) {
+          useSelectionStore.getState().select(bgpId, 'bgp_node')
           return
         }
         useSelectionStore.getState().deselect()
@@ -153,6 +159,7 @@ export function GlobeView() {
       <AircraftDetailPanel />
       <VesselDetailPanel />
       <SatelliteDetailPanel />
+      <BgpDetailPanel />
       <div className="absolute bottom-4 left-4">
         <ViewportInfo />
       </div>

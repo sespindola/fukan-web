@@ -1,7 +1,9 @@
 import {
   BillboardCollection,
+  BoundingSphere,
   Cartesian3,
   Color,
+  HeadingPitchRange,
   Material,
   NearFarScalar,
   PolylineCollection,
@@ -20,8 +22,12 @@ import {
 } from '~/lib/orbitMath'
 import { useStreamStore } from '~/stores/streamStore'
 
-/** Satellite layer tint — distinct from aircraft/vessel white billboards. */
-const SAT_COLOR = Color.CYAN
+/**
+ * Satellite layer tint — distinct from aircraft/vessel white billboards.
+ * Matches the `bg-violet-400` swatch in Sidebar's layer legend so the
+ * globe and the control panel agree on what "satellite" looks like.
+ */
+const SAT_COLOR = Color.fromCssColorString('#a78bfa')
 
 /**
  * Imperative layer manager for satellite positions, orbit paths, and
@@ -37,6 +43,19 @@ const SAT_COLOR = Color.CYAN
  * redraw automatically when the selected satellite's position updates
  * so the orbit stays anchored to the live billboard.
  */
+// Pitch threshold (radians from horizon) below which we consider the
+// camera to be in a "roughly top-down" view and therefore safe to
+// auto-tilt on selection. -π/3 = -60°; anything more tilted than this
+// is left alone so we don't fight a user who's already positioned
+// their own cinematic angle.
+const TOPDOWN_PITCH_THRESHOLD = -Math.PI / 3
+
+// Selection-tilt target pitch — 45° from horizon gives orbit arcs and
+// altitude spread a clear 3D read without disorienting the user.
+const SELECTION_PITCH = -Math.PI / 4
+
+const SELECTION_FLY_DURATION = 1.0
+
 export class SatelliteLayer {
   private viewer: Viewer
   private billboards: BillboardCollection
@@ -44,6 +63,14 @@ export class SatelliteLayer {
   private billboardMap = new Map<string, number>()
   private coveragePrimitive: GroundPrimitive | null = null
   private selectedId: string | null = null
+
+  // Saved camera state from before the user entered satellite selection.
+  // Populated on the first selection, restored on deselect, cleared if
+  // the user manually moves the camera while a satellite is selected.
+  private savedCameraPos: Cartesian3 | null = null
+  private savedHeading = 0
+  private savedPitch = -Math.PI / 2
+  private userMoveHandler: (() => void) | null = null
 
   constructor(viewer: Viewer) {
     this.viewer = viewer
@@ -109,10 +136,108 @@ export class SatelliteLayer {
    * Mark a satellite as selected (or deselect). Draws the inclined
    * great-circle orbit approximation + estimated coverage footprint.
    * Both are ESTIMATES — see computeOrbitPath() and getHalfAngle().
+   *
+   * Selection also triggers a camera auto-tilt to ~45°, framed on the
+   * satellite's position and altitude, so orbit inclination and LEO-vs-
+   * GEO altitude spread are legible. Deselect flies back to the pre-
+   * selection camera state. Skipped entirely if the user was already
+   * tilted (don't override their chosen perspective).
    */
   showDetails(id: string | null): void {
+    const prevId = this.selectedId
     this.selectedId = id
     this.drawDetails(id)
+
+    if (id && id !== prevId) {
+      // New selection — save state only if this is a fresh entry (prevId
+      // null). Switching between satellites re-frames the camera but keeps
+      // the original pre-selection state so deselect still goes home.
+      this.flyToSatellite(id, /* save */ !prevId)
+    } else if (!id && prevId) {
+      this.flyBack()
+    }
+  }
+
+  /** Fly the camera to a 45°-tilted view framed on the given satellite. */
+  private flyToSatellite(id: string, save: boolean): void {
+    this.viewer.camera.cancelFlight()
+    this.disarmUserMoveDetector()
+
+    const event = this.findEvent(id)
+    if (!event) return
+
+    if (save) {
+      // Only save + fly if the user is currently in a roughly top-down
+      // view; if they've already tilted manually, leave them alone.
+      if (this.viewer.camera.pitch >= TOPDOWN_PITCH_THRESHOLD) {
+        this.savedCameraPos = null
+        return
+      }
+      this.savedCameraPos = this.viewer.camera.positionWC.clone()
+      this.savedHeading = this.viewer.camera.heading
+      this.savedPitch = this.viewer.camera.pitch
+    }
+
+    const target = Cartesian3.fromDegrees(
+      decodeLon(event.lon),
+      decodeLat(event.lat),
+      event.alt,
+    )
+
+    // Range scales with altitude so both LEO (~400 km) and GEO (~36,000 km)
+    // land in a legible frame. Floor at 500 km so very-low orbits don't get
+    // a microscope view.
+    const range = Math.max(event.alt * 2.5, 500_000)
+
+    this.viewer.camera.flyToBoundingSphere(new BoundingSphere(target, 0), {
+      offset: new HeadingPitchRange(
+        this.viewer.camera.heading,
+        SELECTION_PITCH,
+        range,
+      ),
+      duration: SELECTION_FLY_DURATION,
+      complete: () => {
+        // Arm the "user moved" detector now that the programmatic fly is
+        // done — any subsequent moveStart is a real user interaction,
+        // which invalidates the saved return state.
+        this.armUserMoveDetector()
+      },
+    })
+  }
+
+  /** Return the camera to the pre-selection state, if we still have one. */
+  private flyBack(): void {
+    this.viewer.camera.cancelFlight()
+    this.disarmUserMoveDetector()
+    if (!this.savedCameraPos) return
+
+    this.viewer.camera.flyTo({
+      destination: this.savedCameraPos,
+      orientation: {
+        heading: this.savedHeading,
+        pitch: this.savedPitch,
+        roll: 0,
+      },
+      duration: SELECTION_FLY_DURATION,
+    })
+    this.savedCameraPos = null
+  }
+
+  private armUserMoveDetector(): void {
+    this.disarmUserMoveDetector()
+    const handler = () => {
+      this.savedCameraPos = null
+      this.disarmUserMoveDetector()
+    }
+    this.viewer.camera.moveStart.addEventListener(handler)
+    this.userMoveHandler = handler
+  }
+
+  private disarmUserMoveDetector(): void {
+    if (this.userMoveHandler) {
+      this.viewer.camera.moveStart.removeEventListener(this.userMoveHandler)
+      this.userMoveHandler = null
+    }
   }
 
   /** Draw (or clear) orbit + cone for the given id. */
@@ -197,7 +322,7 @@ export class SatelliteLayer {
         position,
         image: '/icons/satellite.svg',
         scale: 0.6,
-        color: Color.WHITE,
+        color: SAT_COLOR,
         scaleByDistance: new NearFarScalar(1e5, 1.0, 5e7, 0.3),
         translucencyByDistance: new NearFarScalar(1e5, 1.0, 5e7, 0.5),
         id,
@@ -215,6 +340,7 @@ export class SatelliteLayer {
   }
 
   destroy(): void {
+    this.disarmUserMoveDetector()
     this.viewer.scene.primitives.remove(this.billboards)
     this.viewer.scene.primitives.remove(this.orbitLines)
     if (this.coveragePrimitive) {
