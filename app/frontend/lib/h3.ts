@@ -1,4 +1,4 @@
-import { polygonToCells } from 'h3-js'
+import { cellToChildren, cellToParent, getResolution, polygonToCells } from 'h3-js'
 import { H3_RESOLUTION_BANDS } from '~/types/globe'
 import type { ViewportRect } from '~/types/globe'
 
@@ -41,3 +41,32 @@ export function viewportToH3Cells(
 
   return polygonToCells(polygon, resolution, false)
 }
+
+/**
+ * Map a set of H3 cells onto their coverage at the target resolution.
+ * Used by BGP subscription logic — the publisher broadcasts at res 3 only,
+ * but the viewport can be at any resolution (2–7 from H3_RESOLUTION_BANDS).
+ *
+ *   cell.res > target → cellToParent  (subscribe to the coarser covering cell)
+ *   cell.res = target → cell itself   (pass-through)
+ *   cell.res < target → cellToChildren (fan out: one res-2 cell → 7 res-3 children)
+ *
+ * The third case matters at maximum zoom-out (res 2 band), where calling
+ * cellToParent with a finer target throws "Cell arguments had incompatible
+ * resolutions". Don't remove this without re-reading h3-js's contract.
+ */
+export function cellsToParents(cells: string[], targetResolution: number): string[] {
+  const out = new Set<string>()
+  for (const cell of cells) {
+    const res = getResolution(cell)
+    if (res >= targetResolution) {
+      out.add(cellToParent(cell, targetResolution))
+    } else {
+      for (const child of cellToChildren(cell, targetResolution)) {
+        out.add(child)
+      }
+    }
+  }
+  return [...out]
+}
+

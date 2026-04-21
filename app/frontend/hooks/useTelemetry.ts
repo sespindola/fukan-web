@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { Viewer } from 'cesium'
 import { useStreamStore } from '~/stores/streamStore'
+import { useBgpEventStore } from '~/stores/bgpEventStore'
 import { useLayerStore } from '~/stores/layerStore'
 import { useSelectionStore } from '~/stores/selectionStore'
 import type { AircraftLayer } from '~/components/globe/layers/AircraftLayer'
@@ -8,7 +9,7 @@ import type { VesselLayer } from '~/components/globe/layers/VesselLayer'
 import type { SatelliteLayer } from '~/components/globe/layers/SatelliteLayer'
 import type { BgpLayer } from '~/components/globe/layers/BgpLayer'
 import type { NewsLayer } from '~/components/globe/layers/NewsLayer'
-import type { FukanEvent } from '~/types/telemetry'
+import type { BgpEvent, FukanEvent } from '~/types/telemetry'
 
 export interface LayerManagers {
   aircraft: AircraftLayer
@@ -53,9 +54,9 @@ export function useTelemetry(
           viewer.scene.requestRender()
         },
       ),
-      useStreamStore.subscribe(
-        (state) => state.bgp,
-        (data: Map<string, FukanEvent>) => {
+      useBgpEventStore.subscribe(
+        (state) => state.events,
+        (data: Map<string, BgpEvent>) => {
           layers.bgp.update(data)
           viewer.scene.requestRender()
         },
@@ -71,14 +72,20 @@ export function useTelemetry(
         viewer.scene.requestRender()
       }),
 
-      // Satellite selection → draw/clear the estimated coverage footprint.
+      // Selection-driven overlays: satellites get an orbit+footprint draw,
+      // BGP events get an AS-path polyline. Both clear on deselect or on
+      // selection of a different asset type.
       useSelectionStore.subscribe((state) => {
-        if (state.selectedAssetType !== 'satellite') {
+        if (state.selectedAssetType === 'satellite') {
+          layers.satellites.showDetails(state.selectedAssetId)
+          layers.bgp.clearDetails()
+        } else if (state.selectedAssetType === 'bgp_node') {
+          layers.bgp.showDetails(state.selectedAssetId)
           layers.satellites.showDetails(null)
-          viewer.scene.requestRender()
-          return
+        } else {
+          layers.satellites.showDetails(null)
+          layers.bgp.clearDetails()
         }
-        layers.satellites.showDetails(state.selectedAssetId)
         viewer.scene.requestRender()
       }),
     ]

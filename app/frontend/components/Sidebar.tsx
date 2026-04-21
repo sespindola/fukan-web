@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useLayerStore, type LayerType } from '~/stores/layerStore'
 import { useStreamStore } from '~/stores/streamStore'
+import { useBgpEventStore } from '~/stores/bgpEventStore'
 import { BasemapToggle } from '~/components/globe/controls/BasemapToggle'
 import type { CurrentUser } from '~/types'
 
@@ -10,7 +11,9 @@ interface SidebarProps {
   user?: CurrentUser | null
 }
 
-const STREAM_KEY: Partial<Record<LayerType, 'aircraft' | 'vessels' | 'satellites' | 'bgp'>> = {
+type CountKey = 'aircraft' | 'vessels' | 'satellites' | 'bgp'
+
+const STREAM_KEY: Partial<Record<LayerType, CountKey>> = {
   aircraft: 'aircraft',
   vessel: 'vessels',
   satellite: 'satellites',
@@ -123,14 +126,16 @@ export function Sidebar({ user }: SidebarProps) {
   }, [menuOpen])
 
   useEffect(() => {
-    // Poll stream store sizes on a relaxed interval to avoid hot-path re-renders
+    // Poll stream store sizes on a relaxed interval to avoid hot-path re-renders.
+    // BGP events live in a separate bounded store with time-window eviction.
     const id = setInterval(() => {
       const s = useStreamStore.getState()
+      const bgp = useBgpEventStore.getState().events.size
       setCounts({
         aircraft: s.aircraft.size,
         vessels: s.vessels.size,
         satellites: s.satellites.size,
-        bgp: s.bgp.size,
+        bgp,
       })
     }, 2000)
     return () => clearInterval(id)

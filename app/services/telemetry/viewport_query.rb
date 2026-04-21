@@ -54,6 +54,11 @@ module Telemetry
       # bootstrap payload and the live-broadcast payload disagree on field
       # names, so frontend consumers like VesselDetailPanel /
       # SatelliteDetailPanel / computeOrbitPath silently read undefined.
+      #
+      # BGP events live in fukan.bgp_events with their own query service
+      # (Bgp::ViewportQuery) and AnyCable channel (BgpEventsChannel) — they
+      # do NOT flow through telemetry_latest_flat. The asset_type filter
+      # below is defense in depth in case a bgp_node row ever leaks in.
       rows = Clickhouse.connection.exec_query(<<~SQL).to_a
         SELECT
           asset_id                             AS id,
@@ -86,7 +91,8 @@ module Telemetry
           confidence,
           sat_status
         FROM fukan.telemetry_latest_flat
-        WHERE h3ToParent(h3_cell, #{@resolution.to_i}) IN (#{cells_list})
+        WHERE asset_type != 'bgp_node'
+          AND h3ToParent(h3_cell, #{@resolution.to_i}) IN (#{cells_list})
       SQL
 
       rows.each do |row|
