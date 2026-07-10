@@ -1,4 +1,5 @@
 import {
+  Billboard,
   BillboardCollection,
   Cartesian3,
   Color,
@@ -6,17 +7,21 @@ import {
   NearFarScalar,
   type Viewer,
 } from 'cesium'
-import type { FukanEvent } from '~/types/telemetry'
 import { decodeLat, decodeLon } from '~/lib/coords'
+import type { StreamDelta } from '~/stores/streamStore'
 
 /**
  * Imperative layer manager for aircraft positions.
  * Uses BillboardCollection (Primitive API) — NOT Entity API.
+ *
+ * Consumes {changed, removed} deltas from streamStore per animation frame,
+ * so layer work scales with what moved (typically dozens of events per
+ * frame), not with total session history (which can reach tens of thousands).
  */
 export class AircraftLayer {
   private viewer: Viewer
   private billboards: BillboardCollection
-  private billboardMap = new Map<string, number>()
+  private billboardMap = new Map<string, Billboard>()
 
   constructor(viewer: Viewer) {
     this.viewer = viewer
@@ -25,41 +30,40 @@ export class AircraftLayer {
     }))
   }
 
-  update(aircraft: Map<string, FukanEvent>): void {
-    // Track which IDs are still present
-    const activeIds = new Set<string>()
+  applyDelta(delta: StreamDelta): void {
+    for (const id of delta.removed) {
+      const existing = this.billboardMap.get(id)
+      if (existing) {
+        this.billboards.remove(existing)
+        this.billboardMap.delete(id)
+      }
+    }
 
-    for (const [id, event] of aircraft) {
-      activeIds.add(id)
+    for (const [id, event] of delta.changed) {
       const position = Cartesian3.fromDegrees(
         decodeLon(event.lon),
         decodeLat(event.lat),
         event.alt,
       )
+      const rotation = CesiumMath.toRadians(-event.hdg)
 
-      const existingIndex = this.billboardMap.get(id)
-      if (existingIndex !== undefined) {
-        const billboard = this.billboards.get(existingIndex)
-        billboard.position = position
-        billboard.rotation = CesiumMath.toRadians(-event.hdg)
+      const existing = this.billboardMap.get(id)
+      if (existing) {
+        existing.position = position
+        existing.rotation = rotation
       } else {
-        this.billboards.add({
+        const created = this.billboards.add({
           position,
           image: '/icons/aircraft.svg',
-          rotation: CesiumMath.toRadians(-event.hdg),
+          rotation,
           scale: 1.0,
           color: Color.WHITE,
           scaleByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.2),
           translucencyByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.4),
           id,
         })
-        this.billboardMap.set(id, this.billboards.length - 1)
+        this.billboardMap.set(id, created)
       }
-    }
-
-    // Remove stale billboards by rebuilding if needed
-    if (activeIds.size < this.billboardMap.size) {
-      this.rebuild(aircraft)
     }
   }
 
@@ -71,30 +75,6 @@ export class AircraftLayer {
       return obj.id
     }
     return null
-  }
-
-  private rebuild(aircraft: Map<string, FukanEvent>): void {
-    this.billboards.removeAll()
-    this.billboardMap.clear()
-
-    for (const [id, event] of aircraft) {
-      const position = Cartesian3.fromDegrees(
-        decodeLon(event.lon),
-        decodeLat(event.lat),
-        event.alt,
-      )
-      this.billboards.add({
-        position,
-        image: '/icons/aircraft.svg',
-        rotation: CesiumMath.toRadians(-event.hdg),
-        scale: 1.0,
-        color: Color.WHITE,
-        scaleByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.2),
-        translucencyByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.4),
-        id,
-      })
-      this.billboardMap.set(id, this.billboards.length - 1)
-    }
   }
 
   setVisible(visible: boolean): void {

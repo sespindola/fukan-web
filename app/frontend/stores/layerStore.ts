@@ -1,8 +1,8 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, subscribeWithSelector } from 'zustand/middleware'
 import type { AssetType } from '~/types/telemetry'
 
-export type LayerType = AssetType | 'news'
+export type LayerType = AssetType | 'news' | 'cables'
 
 interface LayerConfig {
   visible: boolean
@@ -21,11 +21,12 @@ const defaultLayers: Record<LayerType, LayerConfig> = {
   satellite: { visible: true, opacity: 1 },
   bgp_node: { visible: true, opacity: 1 },
   news: { visible: true, opacity: 1 },
+  cables: { visible: true, opacity: 1 },
 }
 
 export const useLayerStore = create<LayerState>()(
   persist(
-    (set) => ({
+    subscribeWithSelector((set) => ({
       layers: defaultLayers,
       toggleLayer: (type) =>
         set((state) => ({
@@ -44,10 +45,21 @@ export const useLayerStore = create<LayerState>()(
             [type]: { ...state.layers[type], opacity },
           },
         })),
-    }),
+    })),
     {
       name: 'fukan-layers',
       partialize: ({ layers }) => ({ layers }),
+      merge: (persisted, current) => {
+        const persistedState = persisted as Partial<LayerState> | undefined
+        return {
+          ...current,
+          ...persistedState,
+          layers: {
+            ...defaultLayers,
+            ...(persistedState?.layers ?? {}),
+          },
+        }
+      },
     },
   ),
 )

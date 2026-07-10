@@ -4,11 +4,33 @@ module Telemetry
 
     MAX_CELLS = 2_000
     RESOLUTION_RANGE = (2..7)
-    DETAIL_MIN_RESOLUTION = 3
+    DETAIL_MIN_RESOLUTION = 2
 
-    def initialize(h3_cells:, resolution:)
+    # Bootstrap row caps keyed on the requested resolution. Coarse zooms
+    # (res 2 "continental") intentionally sample the most recent activity —
+    # returning every asset in a busy viewport would mean megabytes of JSON
+    # that blocks the main-thread parse for seconds before any billboard
+    # renders. Live stream fills in the rest after bootstrap.
+    DETAIL_LIMIT_BY_RESOLUTION = {
+      2 => 500,
+      3 => 2_000,
+      4 => 5_000,
+      5 => 5_000,
+      6 => 10_000,
+      7 => 10_000,
+    }.freeze
+
+    ALLOWED_ASSET_TYPES = %w[aircraft vessel satellite].freeze
+
+    def self.detail_limit_for(resolution)
+      DETAIL_LIMIT_BY_RESOLUTION.fetch(resolution.to_i, 10_000)
+    end
+
+    def initialize(h3_cells:, resolution:, asset_types: ALLOWED_ASSET_TYPES)
       @h3_cells = Array(h3_cells).first(MAX_CELLS)
       @resolution = resolution.clamp(RESOLUTION_RANGE)
+      @asset_types = Array(asset_types).map(&:to_s) & ALLOWED_ASSET_TYPES
+      @asset_types = ALLOWED_ASSET_TYPES.dup if @asset_types.empty?
     end
 
     def call
@@ -59,6 +81,28 @@ module Telemetry
       # (Bgp::ViewportQuery) and AnyCable channel (BgpEventsChannel) — they
       # do NOT flow through telemetry_latest_flat. The asset_type filter
       # below is defense in depth in case a bgp_node row ever leaks in.
+      limit = self.class.detail_limit_for(@resolution)
+      # @asset_types is allowlisted in initialize — interpolation is safe.
+      types_list = @asset_types.map { |t| "'#{t}'" }.join(", ")
+
+      # At the widest zoom (res 2, "continental"), filter on the materialized
+      # h3_res2 column added by fukan-ingest migration 000009. That column is
+      # keyed in telemetry_raw by a bloom_filter skipping index, which lets
+      # ClickHouse prune granules — the plain h3ToParent predicate can't.
+      # Other resolutions keep the existing predicate; adding one materialized
+      # column per resolution would multiply insert-time work for little gain.
+      #
+      # Gated on FUKAN_USE_H3_RES2 because the h3_res2 column doesn't exist
+      # until the ingest migration is applied AND telemetry_latest has had
+      # a few minutes to re-populate the argMax state for every active asset.
+      # Enable once both prerequisites are met.
+      use_h3_res2 = ENV["FUKAN_USE_H3_RES2"] == "true"
+      h3_predicate = if use_h3_res2 && @resolution.to_i == 2
+        "h3_res2 IN (#{cells_list})"
+      else
+        "h3ToParent(h3_cell, #{@resolution.to_i}) IN (#{cells_list})"
+      end
+
       rows = Clickhouse.connection.exec_query(<<~SQL).to_a
         SELECT
           asset_id                             AS id,
@@ -91,8 +135,10 @@ module Telemetry
           confidence,
           sat_status
         FROM fukan.telemetry_latest_flat
-        WHERE asset_type != 'bgp_node'
-          AND h3ToParent(h3_cell, #{@resolution.to_i}) IN (#{cells_list})
+        WHERE asset_type IN (#{types_list})
+          AND #{h3_predicate}
+        ORDER BY event_time DESC
+        LIMIT #{limit.to_i}
       SQL
 
       rows.each do |row|

@@ -1,4 +1,5 @@
 import {
+  Billboard,
   BillboardCollection,
   Cartesian3,
   Color,
@@ -7,17 +8,17 @@ import {
   HeightReference,
   type Viewer,
 } from 'cesium'
-import type { FukanEvent } from '~/types/telemetry'
 import { decodeLat, decodeLon } from '~/lib/coords'
+import type { StreamDelta } from '~/stores/streamStore'
 
 /**
  * Imperative layer manager for vessel positions.
- * Uses BillboardCollection, clamped to ground surface.
+ * Uses BillboardCollection, clamped to ground surface. Delta-driven.
  */
 export class VesselLayer {
   private viewer: Viewer
   private billboards: BillboardCollection
-  private billboardMap = new Map<string, number>()
+  private billboardMap = new Map<string, Billboard>()
 
   constructor(viewer: Viewer) {
     this.viewer = viewer
@@ -26,27 +27,32 @@ export class VesselLayer {
     }))
   }
 
-  update(vessels: Map<string, FukanEvent>): void {
-    const activeIds = new Set<string>()
+  applyDelta(delta: StreamDelta): void {
+    for (const id of delta.removed) {
+      const existing = this.billboardMap.get(id)
+      if (existing) {
+        this.billboards.remove(existing)
+        this.billboardMap.delete(id)
+      }
+    }
 
-    for (const [id, event] of vessels) {
-      activeIds.add(id)
+    for (const [id, event] of delta.changed) {
       const position = Cartesian3.fromDegrees(
         decodeLon(event.lon),
         decodeLat(event.lat),
         0,
       )
+      const rotation = CesiumMath.toRadians(-event.hdg)
 
-      const existingIndex = this.billboardMap.get(id)
-      if (existingIndex !== undefined) {
-        const billboard = this.billboards.get(existingIndex)
-        billboard.position = position
-        billboard.rotation = CesiumMath.toRadians(-event.hdg)
+      const existing = this.billboardMap.get(id)
+      if (existing) {
+        existing.position = position
+        existing.rotation = rotation
       } else {
-        this.billboards.add({
+        const created = this.billboards.add({
           position,
           image: '/icons/vessel.svg',
-          rotation: CesiumMath.toRadians(-event.hdg),
+          rotation,
           scale: 0.8,
           color: Color.WHITE,
           heightReference: HeightReference.CLAMP_TO_GROUND,
@@ -54,37 +60,8 @@ export class VesselLayer {
           translucencyByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.4),
           id,
         })
-        this.billboardMap.set(id, this.billboards.length - 1)
+        this.billboardMap.set(id, created)
       }
-    }
-
-    if (activeIds.size < this.billboardMap.size) {
-      this.rebuild(vessels)
-    }
-  }
-
-  private rebuild(vessels: Map<string, FukanEvent>): void {
-    this.billboards.removeAll()
-    this.billboardMap.clear()
-
-    for (const [id, event] of vessels) {
-      const position = Cartesian3.fromDegrees(
-        decodeLon(event.lon),
-        decodeLat(event.lat),
-        0,
-      )
-      this.billboards.add({
-        position,
-        image: '/icons/vessel.svg',
-        rotation: CesiumMath.toRadians(-event.hdg),
-        scale: 0.8,
-        color: Color.WHITE,
-        heightReference: HeightReference.CLAMP_TO_GROUND,
-        scaleByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.2),
-        translucencyByDistance: new NearFarScalar(1e4, 1.0, 1e7, 0.4),
-        id,
-      })
-      this.billboardMap.set(id, this.billboards.length - 1)
     }
   }
 

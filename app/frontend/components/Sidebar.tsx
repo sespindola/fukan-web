@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useLayerStore, type LayerType } from '~/stores/layerStore'
-import { useStreamStore } from '~/stores/streamStore'
-import { useBgpEventStore } from '~/stores/bgpEventStore'
+import { useTrustStore, type TrustState } from '~/stores/trustStore'
+import { useCableStore } from '~/stores/cableStore'
 import { BasemapToggle } from '~/components/globe/controls/BasemapToggle'
 import type { CurrentUser } from '~/types'
+import type { AssetType } from '~/types/telemetry'
 
 import FukanIconUrl from '~/assets/fukan-icon.svg'
 
@@ -25,8 +26,29 @@ const LAYERS: { type: LayerType; label: string; color: string }[] = [
   { type: 'vessel', label: 'Vessels', color: 'bg-blue-400' },
   { type: 'satellite', label: 'Satellites', color: 'bg-violet-400' },
   { type: 'bgp_node', label: 'BGP Nodes', color: 'bg-amber-400' },
+  { type: 'cables', label: 'Subsea Cables', color: 'bg-teal-400' },
   { type: 'news', label: 'News', color: 'bg-pink-400' },
 ]
+
+const TRUST_LABEL: Record<TrustState, string> = {
+  disabled: 'off',
+  loading: 'loading',
+  live: 'live',
+  recent: 'recent',
+  stale: 'stale',
+  sampled: 'sampled',
+  empty: 'empty',
+}
+
+const TRUST_STYLE: Record<TrustState, string> = {
+  disabled: 'text-white/30',
+  loading: 'text-amber-300/80',
+  live: 'text-emerald-300/80',
+  recent: 'text-cyan-300/80',
+  stale: 'text-red-300/80',
+  sampled: 'text-amber-300/80',
+  empty: 'text-white/40',
+}
 
 function Toggle({
   checked,
@@ -63,6 +85,36 @@ function userInitials(name: string): string {
     .join('')
     .toUpperCase()
     .slice(0, 2)
+}
+
+function trustKeyFor(type: LayerType): AssetType | undefined {
+  switch (type) {
+    case 'aircraft':
+    case 'vessel':
+    case 'satellite':
+    case 'bgp_node':
+      return type
+    default:
+      return undefined
+  }
+}
+
+function cableLabel(status: ReturnType<typeof useCableStore.getState>['status']): string {
+  switch (status) {
+    case 'loading': return 'loading osm'
+    case 'ready': return 'static osm'
+    case 'error': return 'error'
+    default: return 'static osm'
+  }
+}
+
+function cableStyle(status: ReturnType<typeof useCableStore.getState>['status']): string {
+  switch (status) {
+    case 'loading': return 'text-amber-300/80'
+    case 'ready': return 'text-teal-300/80'
+    case 'error': return 'text-red-300/80'
+    default: return 'text-white/40'
+  }
 }
 
 function ChevronIcon({ open }: { open: boolean }) {
@@ -109,7 +161,9 @@ function SidebarSection({
 export function Sidebar({ user }: SidebarProps) {
   const layers = useLayerStore((s) => s.layers)
   const toggleLayer = useLayerStore((s) => s.toggleLayer)
-  const [counts, setCounts] = useState<Record<string, number>>({})
+  const trustLayers = useTrustStore((s) => s.snapshot.layers)
+  const cableCount = useCableStore((s) => s.segments.length)
+  const cableStatus = useCableStore((s) => s.status)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -124,22 +178,6 @@ export function Sidebar({ user }: SidebarProps) {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [menuOpen])
-
-  useEffect(() => {
-    // Poll stream store sizes on a relaxed interval to avoid hot-path re-renders.
-    // BGP events live in a separate bounded store with time-window eviction.
-    const id = setInterval(() => {
-      const s = useStreamStore.getState()
-      const bgp = useBgpEventStore.getState().events.size
-      setCounts({
-        aircraft: s.aircraft.size,
-        vessels: s.vessels.size,
-        satellites: s.satellites.size,
-        bgp,
-      })
-    }, 2000)
-    return () => clearInterval(id)
-  }, [])
 
   return (
     <aside className="flex h-full w-56 flex-col border-r border-white/10 bg-gray-950">
@@ -157,15 +195,24 @@ export function Sidebar({ user }: SidebarProps) {
           <ul className="space-y-1">
             {LAYERS.map(({ type, label, color }) => {
               const streamKey = STREAM_KEY[type]
-              const count = streamKey ? counts[streamKey] : undefined
+              const trustKey = trustKeyFor(type)
+              const trust = trustKey ? trustLayers[trustKey] : undefined
+              const count = type === 'cables' ? cableCount : trust ? trust.count : undefined
+              const status = type === 'cables' ? cableLabel(cableStatus) : trust ? TRUST_LABEL[trust.state] : streamKey ? 'waiting' : 'planned'
+              const statusClass = type === 'cables' ? cableStyle(cableStatus) : trust ? TRUST_STYLE[trust.state] : 'text-white/30'
               return (
               <li key={type}>
                 <label className="flex cursor-pointer items-center justify-between rounded-md px-2 py-2 text-sm text-white/80 transition-colors hover:bg-white/5">
-                  <span className="flex items-center gap-2">
-                    {label}
-                    {count != null && count > 0 && (
-                      <span className="text-[10px] tabular-nums text-white/40">{count.toLocaleString()}</span>
-                    )}
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-2">
+                      {label}
+                      {count != null && count > 0 && (
+                        <span className="text-[10px] tabular-nums text-white/40">{count.toLocaleString()}</span>
+                      )}
+                    </span>
+                    <span className={`block text-[10px] uppercase tracking-wide ${statusClass}`}>
+                      {status}
+                    </span>
                   </span>
                   <Toggle
                     checked={layers[type].visible}
