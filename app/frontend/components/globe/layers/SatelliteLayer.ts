@@ -1,4 +1,5 @@
 import {
+  Billboard,
   BillboardCollection,
   BoundingSphere,
   Cartesian3,
@@ -20,7 +21,12 @@ import {
   coverageRadiusMeters,
   getHalfAngle,
 } from '~/lib/orbitMath'
-import { useStreamStore } from '~/stores/streamStore'
+import { useStreamStore, type StreamDelta } from '~/stores/streamStore'
+import {
+  suspendViewportUpdates,
+  resumeViewportUpdates,
+  commitViewportNow,
+} from '~/lib/viewportSuspension'
 
 /**
  * Satellite layer tint — distinct from aircraft/vessel white billboards.
@@ -60,7 +66,7 @@ export class SatelliteLayer {
   private viewer: Viewer
   private billboards: BillboardCollection
   private orbitLines: PolylineCollection
-  private billboardMap = new Map<string, number>()
+  private billboardMap = new Map<string, Billboard>()
   private coveragePrimitive: GroundPrimitive | null = null
   private selectedId: string | null = null
 
@@ -80,23 +86,27 @@ export class SatelliteLayer {
     this.orbitLines = viewer.scene.primitives.add(new PolylineCollection())
   }
 
-  update(satellites: Map<string, FukanEvent>): void {
-    const activeIds = new Set<string>()
+  applyDelta(delta: StreamDelta): void {
+    for (const id of delta.removed) {
+      const existing = this.billboardMap.get(id)
+      if (existing) {
+        this.billboards.remove(existing)
+        this.billboardMap.delete(id)
+      }
+    }
 
-    for (const [id, event] of satellites) {
-      activeIds.add(id)
+    for (const [id, event] of delta.changed) {
       const position = Cartesian3.fromDegrees(
         decodeLon(event.lon),
         decodeLat(event.lat),
         event.alt, // true orbital altitude in meters
       )
 
-      const existingIndex = this.billboardMap.get(id)
-      if (existingIndex !== undefined) {
-        const billboard = this.billboards.get(existingIndex)
-        billboard.position = position
+      const existing = this.billboardMap.get(id)
+      if (existing) {
+        existing.position = position
       } else {
-        this.billboards.add({
+        const created = this.billboards.add({
           position,
           image: '/icons/satellite.svg',
           scale: 0.6,
@@ -105,19 +115,15 @@ export class SatelliteLayer {
           translucencyByDistance: new NearFarScalar(1e5, 1.0, 5e7, 0.5),
           id,
         })
-        this.billboardMap.set(id, this.billboards.length - 1)
+        this.billboardMap.set(id, created)
       }
-    }
-
-    if (activeIds.size < this.billboardMap.size) {
-      this.rebuild(satellites)
     }
 
     // Refresh the orbit/coverage for the selected satellite if it just
     // received a new position. computeOrbitPath is cheap (~180 trig ops),
     // and this keeps the drawn orbit line anchored to the billboard even
     // as the satellite propagates around.
-    if (this.selectedId && activeIds.has(this.selectedId)) {
+    if (this.selectedId && delta.changed.has(this.selectedId)) {
       this.drawDetails(this.selectedId)
     }
   }
@@ -148,13 +154,30 @@ export class SatelliteLayer {
     this.selectedId = id
     this.drawDetails(id)
 
-    if (id && id !== prevId) {
-      // New selection — save state only if this is a fresh entry (prevId
-      // null). Switching between satellites re-frames the camera but keeps
-      // the original pre-selection state so deselect still goes home.
-      this.flyToSatellite(id, /* save */ !prevId)
+    if (id && !prevId) {
+      // Entering satellite selection — freeze the H3 viewport subscription
+      // so the programmatic fly-to plus any subsequent user pan/zoom around
+      // the orbit do NOT resubscribe the telemetry channel. Without this,
+      // deselect re-bootstraps thousands of regional assets and blocks the
+      // UI for seconds. See app/frontend/lib/viewportSuspension.ts.
+      suspendViewportUpdates()
+      this.flyToSatellite(id, /* save */ true)
+    } else if (id && id !== prevId) {
+      // Switching between satellites while already suspended — no
+      // suspend/resume bookkeeping. Keep the original pre-selection camera
+      // state so a later deselect still goes home.
+      this.flyToSatellite(id, /* save */ false)
     } else if (!id && prevId) {
+      // Deselect. If the user never manually moved the camera, flyBack
+      // restores the exact pre-selection view and the frozen subscription's
+      // cells still match — no resubscribe needed. If they did move
+      // (armUserMoveDetector nulled savedCameraPos), flyBack is a no-op and
+      // we force one commit so the subscription resyncs to wherever they
+      // left the camera.
+      const userMoved = this.savedCameraPos === null
       this.flyBack()
+      resumeViewportUpdates()
+      if (userMoved) commitViewportNow()
     }
   }
 
@@ -308,29 +331,6 @@ export class SatelliteLayer {
     return useStreamStore.getState().satellites.get(id)
   }
 
-  private rebuild(satellites: Map<string, FukanEvent>): void {
-    this.billboards.removeAll()
-    this.billboardMap.clear()
-
-    for (const [id, event] of satellites) {
-      const position = Cartesian3.fromDegrees(
-        decodeLon(event.lon),
-        decodeLat(event.lat),
-        event.alt,
-      )
-      this.billboards.add({
-        position,
-        image: '/icons/satellite.svg',
-        scale: 0.6,
-        color: SAT_COLOR,
-        scaleByDistance: new NearFarScalar(1e5, 1.0, 5e7, 0.3),
-        translucencyByDistance: new NearFarScalar(1e5, 1.0, 5e7, 0.5),
-        id,
-      })
-      this.billboardMap.set(id, this.billboards.length - 1)
-    }
-  }
-
   setVisible(visible: boolean): void {
     this.billboards.show = visible
     this.orbitLines.show = visible
@@ -340,6 +340,12 @@ export class SatelliteLayer {
   }
 
   destroy(): void {
+    // Release viewport suspension if we're torn down mid-selection — the
+    // counter is module-level and would otherwise survive HMR or remount.
+    if (this.selectedId !== null) {
+      resumeViewportUpdates()
+      this.selectedId = null
+    }
     this.disarmUserMoveDetector()
     this.viewer.scene.primitives.remove(this.billboards)
     this.viewer.scene.primitives.remove(this.orbitLines)

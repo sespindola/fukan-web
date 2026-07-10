@@ -1,15 +1,17 @@
 import { useEffect } from 'react'
 import type { Viewer } from 'cesium'
-import { useStreamStore } from '~/stores/streamStore'
+import { subscribeDelta } from '~/stores/streamStore'
 import { useBgpEventStore } from '~/stores/bgpEventStore'
 import { useLayerStore } from '~/stores/layerStore'
 import { useSelectionStore } from '~/stores/selectionStore'
+import { perfTime } from '~/lib/perf'
 import type { AircraftLayer } from '~/components/globe/layers/AircraftLayer'
 import type { VesselLayer } from '~/components/globe/layers/VesselLayer'
 import type { SatelliteLayer } from '~/components/globe/layers/SatelliteLayer'
 import type { BgpLayer } from '~/components/globe/layers/BgpLayer'
 import type { NewsLayer } from '~/components/globe/layers/NewsLayer'
-import type { BgpEvent, FukanEvent } from '~/types/telemetry'
+import type { CableLayer } from '~/components/globe/layers/CableLayer'
+import type { BgpEvent } from '~/types/telemetry'
 
 export interface LayerManagers {
   aircraft: AircraftLayer
@@ -17,6 +19,7 @@ export interface LayerManagers {
   satellites: SatelliteLayer
   bgp: BgpLayer
   news: NewsLayer
+  cables: CableLayer
 }
 
 /**
@@ -32,32 +35,41 @@ export function useTelemetry(
     if (!viewer || !layers) return
 
     const unsubs = [
-      // Data subscriptions
-      useStreamStore.subscribe(
-        (state) => state.aircraft,
-        (data: Map<string, FukanEvent>) => {
-          layers.aircraft.update(data)
-          viewer.scene.requestRender()
-        },
-      ),
-      useStreamStore.subscribe(
-        (state) => state.vessels,
-        (data: Map<string, FukanEvent>) => {
-          layers.vessels.update(data)
-          viewer.scene.requestRender()
-        },
-      ),
-      useStreamStore.subscribe(
-        (state) => state.satellites,
-        (data: Map<string, FukanEvent>) => {
-          layers.satellites.update(data)
-          viewer.scene.requestRender()
-        },
-      ),
+      // Moving-asset layers consume per-frame deltas from streamStore —
+      // see subscribeDelta(). Layer work scales with events that moved
+      // this frame, not with total session history.
+      subscribeDelta('aircraft', (delta) => {
+        perfTime(
+          'layer.aircraft.applyDelta',
+          () => layers.aircraft.applyDelta(delta),
+          { changed: delta.changed.size, removed: delta.removed.size },
+        )
+        viewer.scene.requestRender()
+      }),
+      subscribeDelta('vessels', (delta) => {
+        perfTime(
+          'layer.vessels.applyDelta',
+          () => layers.vessels.applyDelta(delta),
+          { changed: delta.changed.size, removed: delta.removed.size },
+        )
+        viewer.scene.requestRender()
+      }),
+      subscribeDelta('satellites', (delta) => {
+        perfTime(
+          'layer.satellites.applyDelta',
+          () => layers.satellites.applyDelta(delta),
+          { changed: delta.changed.size, removed: delta.removed.size },
+        )
+        viewer.scene.requestRender()
+      }),
+      // BGP retains the whole-map subscribe pattern: bgpEventStore is
+      // bounded (3000 hard cap, 15-min age sweep) so iteration stays cheap,
+      // and BGP events are one-time happenings where "changed" vs "removed"
+      // maps awkwardly onto the underlying semantics.
       useBgpEventStore.subscribe(
         (state) => state.events,
         (data: Map<string, BgpEvent>) => {
-          layers.bgp.update(data)
+          perfTime('layer.bgp.update', () => layers.bgp.update(data), { size: data.size })
           viewer.scene.requestRender()
         },
       ),

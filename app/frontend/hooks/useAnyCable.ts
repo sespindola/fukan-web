@@ -1,10 +1,13 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { createConsumer, type Subscription } from '@rails/actioncable'
 import { useStreamStore } from '~/stores/streamStore'
 import { useBgpEventStore } from '~/stores/bgpEventStore'
 import { useGlobeStore } from '~/stores/globeStore'
+import { useLayerStore } from '~/stores/layerStore'
+import { useTrustStore, type BootstrapMeta } from '~/stores/trustStore'
 import { cellsToParents } from '~/lib/h3'
-import type { FukanEvent, BgpEvent } from '~/types/telemetry'
+import { perfMark } from '~/lib/perf'
+import type { AssetType, FukanEvent, BgpEvent } from '~/types/telemetry'
 
 const consumer = createConsumer()
 
@@ -16,11 +19,13 @@ interface TelemetryBootstrap {
   type: 'bootstrap'
   resolution: number
   data: FukanEvent[]
+  meta?: BootstrapMeta
 }
 
 interface BgpBootstrap {
   type: 'bootstrap'
   data: BgpEvent[]
+  meta?: BootstrapMeta
 }
 
 function isTelemetryBootstrap(data: unknown): data is TelemetryBootstrap {
@@ -41,100 +46,213 @@ function isBgpBootstrap(data: unknown): data is BgpBootstrap {
   )
 }
 
+// Defensive cap so the ActionCable subscribe frame stays under anycable-go's
+// default 64 KB max_message_size. H3 resolution bands are tuned to keep
+// polygonToCells under ~1500 cells at any altitude, so this should rarely
+// trip. 2000 cells × 3 types × ~20 bytes ≈ 120 KB worst case on a maximally-
+// open layer config — acceptable, but worth watching.
+const MAX_SUBSCRIBE_CELLS = 2_000
+
+const TELEMETRY_LAYER_TYPES: readonly AssetType[] = ['aircraft', 'vessel', 'satellite']
+
+function enabledTelemetryTypes(): AssetType[] {
+  const layers = useLayerStore.getState().layers
+  return TELEMETRY_LAYER_TYPES.filter((t) => layers[t].visible)
+}
+
+function bgpEnabled(): boolean {
+  return useLayerStore.getState().layers.bgp_node.visible
+}
+
+// Subscription state is module-scoped, not React-scoped. StrictMode's
+// mount → cleanup → remount dance (and HMR, and any accidental double-mount)
+// would otherwise reset per-component refs and let duplicate subscribe frames
+// leak out before the matching unsubscribes reach anycable-go — which then
+// warns "already subscribed to {...}" and drops the extras.
+let telemetrySub: Subscription | null = null
+let bgpSub: Subscription | null = null
+let telemetryIdentifier = ''
+let bgpIdentifier = ''
+let storeListenersAttached = false
+let offGlobe: (() => void) | null = null
+let offLayers: (() => void) | null = null
+let mountCount = 0
+
+function applySubscriptions(): void {
+  const { viewportH3Cells: cells, viewportResolution: resolution } = useGlobeStore.getState()
+  const assetTypes = enabledTelemetryTypes()
+  const cappedCells = cells.length > MAX_SUBSCRIBE_CELLS ? cells.slice(0, MAX_SUBSCRIBE_CELLS) : cells
+  const bgpCells = bgpEnabled() ? cellsToParents(cappedCells, BGP_SUBSCRIBE_RESOLUTION) : []
+
+  const desiredTelemetry = assetTypes.length > 0
+    ? JSON.stringify({ channel: 'TelemetryChannel', cells: cappedCells, resolution, assetTypes })
+    : ''
+  const desiredBgp = bgpEnabled()
+    ? JSON.stringify({ channel: 'BgpEventsChannel', cells: bgpCells })
+    : ''
+
+  const telemetryChanged = desiredTelemetry !== telemetryIdentifier
+  const bgpChanged = desiredBgp !== bgpIdentifier
+  if (!telemetryChanged && !bgpChanged) return
+
+  if (telemetryChanged) {
+    telemetrySub?.unsubscribe()
+    telemetrySub = null
+    telemetryIdentifier = desiredTelemetry
+  }
+  if (bgpChanged) {
+    bgpSub?.unsubscribe()
+    bgpSub = null
+    bgpIdentifier = desiredBgp
+  }
+
+  // Drop assets from a previous viewport so layer update iterations stay
+  // bounded by visible area, not session history. Runs BEFORE new
+  // subscriptions kick off so the bootstrap + live stream repopulate
+  // into a freshly pruned state.
+  if (telemetryChanged) {
+    useStreamStore.getState().evictOutsideCells(cappedCells, resolution)
+  }
+
+  if (telemetryChanged) {
+    if (assetTypes.length > 0) {
+      useStreamStore.getState().setConnectionStatus('connecting')
+      telemetrySub = consumer.subscriptions.create(
+        {
+          channel: 'TelemetryChannel',
+          h3_cells: cappedCells,
+          resolution,
+          asset_types: assetTypes,
+        },
+        {
+          connected() {
+            useStreamStore.getState().setConnectionStatus('connected')
+          },
+          disconnected() {
+            useStreamStore.getState().setConnectionStatus('disconnected')
+          },
+          rejected() {
+            useStreamStore.getState().setConnectionStatus('disconnected')
+          },
+          received(data: unknown) {
+            if (isTelemetryBootstrap(data)) {
+              perfMark('telemetry.bootstrap.received', {
+                rows: data.data.length,
+                bytes: JSON.stringify(data).length,
+              })
+              if (data.meta) useTrustStore.getState().setTelemetryBootstrap(data.meta)
+              useStreamStore.getState().upsertBatch(data.data)
+            } else if (Array.isArray(data)) {
+              useStreamStore.getState().upsertBatch(data as FukanEvent[])
+            } else {
+              useStreamStore.getState().upsert(data as FukanEvent)
+            }
+          },
+        },
+      )
+    } else {
+      // All telemetry layers off — no subscription at all. Avoids wasted
+      // Redis fan-out and bootstrap queries when the user wants BGP only.
+      useStreamStore.getState().setConnectionStatus('disconnected')
+    }
+  }
+
+  if (bgpChanged && bgpEnabled()) {
+    bgpSub = consumer.subscriptions.create(
+      {
+        channel: 'BgpEventsChannel',
+        h3_cells: bgpCells,
+      },
+      {
+        received(data: unknown) {
+          if (isBgpBootstrap(data)) {
+            perfMark('bgp.bootstrap.received', {
+              rows: data.data.length,
+              bytes: JSON.stringify(data).length,
+            })
+            if (data.meta) useTrustStore.getState().setBgpBootstrap(data.meta)
+            useBgpEventStore.getState().upsertBatch(data.data)
+          } else if (Array.isArray(data)) {
+            useBgpEventStore.getState().upsertBatch(data as BgpEvent[])
+          } else {
+            useBgpEventStore.getState().upsert(data as BgpEvent)
+          }
+        },
+      },
+    )
+  }
+}
+
+function attachStoreListeners(): void {
+  if (storeListenersAttached) return
+  storeListenersAttached = true
+
+  offGlobe = useGlobeStore.subscribe(
+    (state) => ({ cells: state.viewportH3Cells, resolution: state.viewportResolution }),
+    applySubscriptions,
+    { equalityFn: (a, b) => a.cells === b.cells && a.resolution === b.resolution },
+  )
+
+  // Layer visibility signature covers the four booleans we subscribe on.
+  // Opacity changes (which we never do) would not re-subscribe.
+  offLayers = useLayerStore.subscribe(
+    (state) => [
+      state.layers.aircraft.visible,
+      state.layers.vessel.visible,
+      state.layers.satellite.visible,
+      state.layers.bgp_node.visible,
+    ].join(','),
+    applySubscriptions,
+  )
+}
+
+function teardown(): void {
+  offGlobe?.()
+  offLayers?.()
+  offGlobe = null
+  offLayers = null
+  storeListenersAttached = false
+  telemetrySub?.unsubscribe()
+  bgpSub?.unsubscribe()
+  telemetrySub = null
+  bgpSub = null
+  telemetryIdentifier = ''
+  bgpIdentifier = ''
+}
+
 /**
  * Manage AnyCable WebSocket subscriptions for live telemetry + BGP events.
  *
  * Two parallel channels:
  *   - TelemetryChannel streams aircraft/vessel/satellite events at the
- *     viewport's current H3 resolution band (2–7 depending on altitude).
+ *     viewport's current H3 resolution band (2–7 depending on altitude),
+ *     filtered by which layers the user has enabled.
  *   - BgpEventsChannel streams BGP events at a fixed coarse resolution
  *     (3) regardless of zoom, because BGP event coordinates are imprecise
  *     enough that zoom-band-precise subscriptions would be misleading.
  *
- * Both subscriptions recreate together on every viewport change so their
- * cell sets stay consistent during fast pans.
+ * Subscriptions re-create whenever the viewport OR the set of enabled
+ * telemetry layers changes, so Redis fan-out stays narrowed to exactly
+ * what the user is looking at.
+ *
+ * Subscription state is held at module scope, not per-hook, so the live
+ * subscriptions survive StrictMode's simulated unmount/remount and HMR
+ * without emitting duplicate subscribe frames.
  */
 export function useAnyCable(): void {
-  const telemetryRef = useRef<Subscription | null>(null)
-  const bgpRef = useRef<Subscription | null>(null)
-
   useEffect(() => {
-    const unsubscribe = useGlobeStore.subscribe(
-      (state) => ({ cells: state.viewportH3Cells, resolution: state.viewportResolution }),
-      ({ cells, resolution }) => {
-        telemetryRef.current?.unsubscribe()
-        bgpRef.current?.unsubscribe()
-
-        // Defensive cap so the ActionCable subscribe frame stays under
-        // anycable-go's default 64 KB max_message_size. The H3 resolution
-        // bands in types/globe.ts are tuned to keep polygonToCells under
-        // ~1500 cells at any altitude, so this cap should almost never trip.
-        // 2000 cells at ~20 bytes each ≈ 40 KB, comfortably under 64 KB.
-        const MAX_SUBSCRIBE_CELLS = 2_000
-        const cappedCells = cells.length > MAX_SUBSCRIBE_CELLS
-          ? cells.slice(0, MAX_SUBSCRIBE_CELLS)
-          : cells
-
-        useStreamStore.getState().setConnectionStatus('connecting')
-
-        telemetryRef.current = consumer.subscriptions.create(
-          {
-            channel: 'TelemetryChannel',
-            h3_cells: cappedCells,
-            resolution,
-          },
-          {
-            connected() {
-              useStreamStore.getState().setConnectionStatus('connected')
-            },
-            disconnected() {
-              useStreamStore.getState().setConnectionStatus('disconnected')
-            },
-            rejected() {
-              useStreamStore.getState().setConnectionStatus('disconnected')
-            },
-            received(data: unknown) {
-              if (isTelemetryBootstrap(data)) {
-                useStreamStore.getState().upsertBatch(data.data)
-              } else if (Array.isArray(data)) {
-                useStreamStore.getState().upsertBatch(data as FukanEvent[])
-              } else {
-                useStreamStore.getState().upsert(data as FukanEvent)
-              }
-            },
-          },
-        )
-
-        // BGP: subscribe using res-3 parents of the current viewport. The
-        // parent set is usually much smaller than the viewport at res 5+
-        // and roughly matches at res 2–3.
-        const bgpCells = cellsToParents(cappedCells, BGP_SUBSCRIBE_RESOLUTION)
-
-        bgpRef.current = consumer.subscriptions.create(
-          {
-            channel: 'BgpEventsChannel',
-            h3_cells: bgpCells,
-          },
-          {
-            received(data: unknown) {
-              if (isBgpBootstrap(data)) {
-                useBgpEventStore.getState().upsertBatch(data.data)
-              } else if (Array.isArray(data)) {
-                useBgpEventStore.getState().upsertBatch(data as BgpEvent[])
-              } else {
-                useBgpEventStore.getState().upsert(data as BgpEvent)
-              }
-            },
-          },
-        )
-      },
-      { equalityFn: (a, b) => a.cells === b.cells && a.resolution === b.resolution },
-    )
-
+    mountCount++
+    attachStoreListeners()
+    applySubscriptions()
     return () => {
-      unsubscribe()
-      telemetryRef.current?.unsubscribe()
-      bgpRef.current?.unsubscribe()
+      mountCount--
+      // StrictMode runs cleanup synchronously between mount 1 and mount 2
+      // (count goes 1 → 0 → 1). Defer the teardown check to a microtask
+      // so a synchronous remount has time to bump the count back up; only
+      // a real unmount leaves count at 0 when the microtask runs.
+      queueMicrotask(() => {
+        if (mountCount === 0) teardown()
+      })
     }
   }, [])
 }

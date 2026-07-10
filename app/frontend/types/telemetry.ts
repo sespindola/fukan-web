@@ -121,3 +121,27 @@ export interface SatelliteMeta {
   apogee_km: number
   perigee_km: number
 }
+
+// Shape must stay in sync with:
+//   fukan-ingest/internal/refresh/cables/types.go (CableRow)
+//   fukan-web/app/services/cable/viewport_query.rb (SELECT list)
+//
+// Every CableSegment has both curated identity (Wikidata baseline) AND
+// validated geometry (an OSM polyline that passed PolylineClearsLand).
+// There is no "approximate" path — synthesized great-circle fallbacks
+// were removed in migration 000012.
+export interface CableSegment {
+  id: string
+  cable_id: string
+  name: string
+  slug: string
+  owners: string[]
+  status: string // 'active' | 'planned' | 'decommissioned' | 'unknown'
+  rfs_year: number // 0 = unknown
+  length_km: number // 0 = unknown
+  medium: string
+  category: string
+  coords: number[] // alternating Int32 lat/lon pairs
+  provenance_source_urls: string[]
+  updated_at: string
+}

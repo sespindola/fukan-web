@@ -430,24 +430,39 @@ interface StreamState {
 }
 ```
 
-### Critical Pattern: Imperative Map Updates
+### Critical Pattern: Delta-Driven Imperative Updates
+
+Moving-asset layers (aircraft / vessels / satellites) subscribe to per-frame
+{changed, removed} deltas from `streamStore` via `subscribeDelta`, NOT to the
+full map. Layer work scales with what moved this frame, not with session
+history. Live events are coalesced into one delta per animation frame, so a
+WS burst of 50 aircraft upserts produces exactly one `applyDelta` call.
 
 ```typescript
-// ✅ CORRECT — update CesiumJS outside React render cycle
-useStreamStore.subscribe(
-  (state) => state.aircraft,
-  (aircraft) => {
-    aircraftLayer.update(aircraft)
-    viewer.scene.requestRender()
-  }
-)
+// ✅ CORRECT — delta-driven update outside React render cycle
+import { subscribeDelta } from '~/stores/streamStore'
+
+subscribeDelta('aircraft', (delta) => {
+  aircraftLayer.applyDelta(delta) // delta = { changed, removed }
+  viewer.scene.requestRender()
+})
 
 // ❌ WRONG — causes React re-render on every telemetry update
 function AircraftLayer() {
   const aircraft = useStreamStore((s) => s.aircraft)
   return <Entity position={...} billboard={...} />
 }
+
+// ❌ ALSO WRONG — iterates the whole map every tick (O(session_history))
+useStreamStore.subscribe(
+  (state) => state.aircraft,
+  (aircraft) => aircraftLayer.update(aircraft),
+)
 ```
+
+BGP retains the whole-map subscribe pattern because `bgpEventStore` is
+bounded (3k hard cap, 15-min age sweep) and BGP events are one-time
+happenings where the delta shape maps awkwardly onto the semantics.
 
 ---
 

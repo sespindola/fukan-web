@@ -5,6 +5,8 @@ import { createViewer, setBasemapImagery } from '~/lib/cesium'
 import { useViewport } from '~/hooks/useViewport'
 import { useAnyCable } from '~/hooks/useAnyCable'
 import { useTelemetry, type LayerManagers } from '~/hooks/useTelemetry'
+import { useTrustSampler } from '~/hooks/useTrustSampler'
+import { useCables } from '~/hooks/useCables'
 import { useBasemapStore } from '~/stores/basemapStore'
 import { useSelectionStore } from '~/stores/selectionStore'
 import { AircraftLayer } from './layers/AircraftLayer'
@@ -12,6 +14,7 @@ import { VesselLayer } from './layers/VesselLayer'
 import { SatelliteLayer } from './layers/SatelliteLayer'
 import { BgpLayer } from './layers/BgpLayer'
 import { NewsLayer } from './layers/NewsLayer'
+import { CableLayer } from './layers/CableLayer'
 import { ViewportInfo } from './controls/ViewportInfo'
 import { Attribution } from './controls/Attribution'
 import { AircraftDetailPanel } from './controls/AircraftDetailPanel'
@@ -54,8 +57,9 @@ export function GlobeView() {
       const satellites = new SatelliteLayer(v)
       const bgp = new BgpLayer(v)
       const news = new NewsLayer(v)
+      const cables = new CableLayer(v)
 
-      setLayers({ aircraft, vessels, satellites, bgp, news })
+      setLayers({ aircraft, vessels, satellites, bgp, news, cables })
 
       // Input handlers
       const handler = new ScreenSpaceEventHandler(v.scene.canvas)
@@ -144,6 +148,8 @@ export function GlobeView() {
   useViewport(viewer)
   useTelemetry(viewer, layers)
   useAnyCable()
+  useTrustSampler()
+  useCables(viewer, layers?.cables ?? null)
 
   return (
     <div className="absolute inset-0">
