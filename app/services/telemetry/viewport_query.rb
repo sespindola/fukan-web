@@ -17,7 +17,7 @@ module Telemetry
       4 => 5_000,
       5 => 5_000,
       6 => 10_000,
-      7 => 10_000,
+      7 => 10_000
     }.freeze
 
     ALLOWED_ASSET_TYPES = %w[aircraft vessel satellite].freeze

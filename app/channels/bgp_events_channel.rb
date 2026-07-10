@@ -55,7 +55,7 @@ class BgpEventsChannel < ApplicationCable::Channel
       generated_at: (Time.current.to_f * 1000).round,
       cell_count: h3_cells.size,
       resolution: Bgp::ViewportQuery::BROADCAST_RESOLUTION,
-      asset_types: ["bgp_node"]
+      asset_types: [ "bgp_node" ]
     }
   end
 end
