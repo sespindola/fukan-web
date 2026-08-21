@@ -23,11 +23,16 @@ broadcast_adapters = ["redis"]
 # pubsub_adapter = "redis" # or "nats"
 
 [logging]
-debug = true
+debug = false
+
+# Local performance diagnostics: http://localhost:8091/metrics
+[metrics]
+http = "/metrics"
+port = 8091
 
 # RPC talks to the Rails-side anycable server (bundle exec anycable, see Procfile.dev)
-# over gRPC on the default port 50051. It runs TelemetryChannel#subscribed, which
-# registers `stream_from "telemetry:<h3>"` subscriptions for the client's viewport.
+# over gRPC on the default port 50051. It runs TelemetryChannel#subscribed,
+# which registers compacted `telemetry:<type>:<h3>` viewport streams.
 # Read more: https://docs.anycable.io/anycable-go/rpc
 
 
@@ -50,4 +55,3 @@ turbo = true
 [redis]
 # IMPORTANT: In production, provide Redis address via the REDIS_URL or ANYCABLE_REDIS_URL env var
 url = "redis://localhost:6379"
-

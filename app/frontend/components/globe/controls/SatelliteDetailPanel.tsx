@@ -45,8 +45,11 @@ export function SatelliteDetailPanel() {
     if (current) setTelemetry(current)
 
     const unsub = useStreamStore.subscribe(
-      (state) => state.satellites.get(selectedId),
-      (event) => { if (event) setTelemetry(event) },
+      (state) => state.versions.satellites,
+      () => {
+        const event = useStreamStore.getState().satellites.get(selectedId)
+        if (event) setTelemetry(event)
+      },
     )
 
     return () => {

@@ -9,6 +9,7 @@ Rails.application.routes.draw do
   get "inertia-example", to: "inertia_example#index"
 
   namespace :api do
+    resource :telemetry, only: [ :create ], controller: "telemetry"
     resources :aircraft, only: [ :show ]
     resources :satellites, only: [ :show ]
     resources :cables, only: [ :index ]

@@ -21,4 +21,14 @@ Things you may want to cover:
 
 * Deployment instructions
 
+## Telemetry performance controls
+
+Moving telemetry uses 200 ms live delta batches and coarse viewport density
+LOD by default. Set `VITE_TELEMETRY_LOD=false` at build time to restore
+individual assets at resolutions 2–4 during rollback. Browser performance
+logs are disabled by default; enable them with `VITE_PERF_LOGS=true`.
+
+In development, AnyCable metrics are exposed at
+`http://localhost:8091/metrics` by `Procfile.dev`.
+
 * ...

@@ -7,6 +7,7 @@ import { useAnyCable } from '~/hooks/useAnyCable'
 import { useTelemetry, type LayerManagers } from '~/hooks/useTelemetry'
 import { useTrustSampler } from '~/hooks/useTrustSampler'
 import { useCables } from '~/hooks/useCables'
+import { useViewportTelemetry } from '~/hooks/useViewportTelemetry'
 import { useBasemapStore } from '~/stores/basemapStore'
 import { useSelectionStore } from '~/stores/selectionStore'
 import { AircraftLayer } from './layers/AircraftLayer'
@@ -15,6 +16,7 @@ import { SatelliteLayer } from './layers/SatelliteLayer'
 import { BgpLayer } from './layers/BgpLayer'
 import { NewsLayer } from './layers/NewsLayer'
 import { CableLayer } from './layers/CableLayer'
+import { TelemetryDensityLayer } from './layers/TelemetryDensityLayer'
 import { ViewportInfo } from './controls/ViewportInfo'
 import { Attribution } from './controls/Attribution'
 import { AircraftDetailPanel } from './controls/AircraftDetailPanel'
@@ -58,8 +60,9 @@ export function GlobeView() {
       const bgp = new BgpLayer(v)
       const news = new NewsLayer(v)
       const cables = new CableLayer(v)
+      const density = new TelemetryDensityLayer(v)
 
-      setLayers({ aircraft, vessels, satellites, bgp, news, cables })
+      setLayers({ aircraft, vessels, satellites, bgp, news, cables, density })
 
       // Input handlers
       const handler = new ScreenSpaceEventHandler(v.scene.canvas)
@@ -146,8 +149,9 @@ export function GlobeView() {
 
   // Wire up viewport tracking, telemetry subscriptions, and AnyCable
   useViewport(viewer)
-  useTelemetry(viewer, layers)
   useAnyCable()
+  useViewportTelemetry()
+  useTelemetry(viewer, layers)
   useTrustSampler()
   useCables(viewer, layers?.cables ?? null)
 

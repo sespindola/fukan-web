@@ -21,8 +21,11 @@ export function VesselDetailPanel() {
     if (event) setTelemetry(event)
 
     const unsub = useStreamStore.subscribe(
-      (state) => state.vessels.get(selectedId),
-      (event) => { if (event) setTelemetry(event) },
+      (state) => state.versions.vessels,
+      () => {
+        const event = useStreamStore.getState().vessels.get(selectedId)
+        if (event) setTelemetry(event)
+      },
     )
 
     return unsub

@@ -43,6 +43,31 @@ export interface FukanEvent {
   sat_status?: string // 'maneuvering' | 'decaying' | ''
 }
 
+export interface TelemetryAggregateCell {
+  h3: string
+  type: 'aircraft' | 'vessel' | 'satellite'
+  count: number
+  latest_ts: number
+}
+
+export interface TelemetryDetailSnapshot {
+  mode: 'detail'
+  resolution: number
+  generated_at: number
+  limit: number
+  sampled: boolean
+  events: FukanEvent[]
+}
+
+export interface TelemetryAggregateSnapshot {
+  mode: 'aggregate'
+  resolution: number
+  generated_at: number
+  cells: TelemetryAggregateCell[]
+}
+
+export type TelemetryViewportSnapshot = TelemetryDetailSnapshot | TelemetryAggregateSnapshot
+
 /**
  * BGP routing event: a discrete announcement, withdrawal, hijack, or
  * route leak observed on the RIPE RIS Live stream. Unlike FukanEvent,

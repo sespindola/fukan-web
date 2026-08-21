@@ -39,8 +39,11 @@ export function AircraftDetailPanel() {
 
     // Subscribe to stream store for live telemetry updates
     const unsub = useStreamStore.subscribe(
-      (state) => state.aircraft.get(selectedId),
-      (event) => { if (event) setTelemetry(event) },
+      (state) => state.versions.aircraft,
+      () => {
+        const event = useStreamStore.getState().aircraft.get(selectedId)
+        if (event) setTelemetry(event)
+      },
     )
 
     return unsub
@@ -172,4 +175,3 @@ function formatAltitude(alt: number, vr: number): string {
   const arrow = vr > 0 ? '\u2191' : '\u2193'
   return `${base} (${arrow} ${Math.abs(vr).toFixed(1)} m/s)`
 }
-

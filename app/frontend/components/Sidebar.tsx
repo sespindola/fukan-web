@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useLayerStore, type LayerType } from '~/stores/layerStore'
 import { useTrustStore, type TrustState } from '~/stores/trustStore'
 import { useCableStore } from '~/stores/cableStore'
+import { useAggregateStore } from '~/stores/aggregateStore'
 import { BasemapToggle } from '~/components/globe/controls/BasemapToggle'
 import type { CurrentUser } from '~/types'
 import type { AssetType } from '~/types/telemetry'
@@ -164,6 +165,8 @@ export function Sidebar({ user }: SidebarProps) {
   const trustLayers = useTrustStore((s) => s.snapshot.layers)
   const cableCount = useCableStore((s) => s.segments.length)
   const cableStatus = useCableStore((s) => s.status)
+  const aggregateCells = useAggregateStore((s) => s.cells)
+  const aggregateResolution = useAggregateStore((s) => s.resolution)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -196,10 +199,28 @@ export function Sidebar({ user }: SidebarProps) {
             {LAYERS.map(({ type, label, color }) => {
               const streamKey = STREAM_KEY[type]
               const trustKey = trustKeyFor(type)
+              const aggregateType = type === 'aircraft' || type === 'vessel' || type === 'satellite' ? type : undefined
               const trust = trustKey ? trustLayers[trustKey] : undefined
-              const count = type === 'cables' ? cableCount : trust ? trust.count : undefined
-              const status = type === 'cables' ? cableLabel(cableStatus) : trust ? TRUST_LABEL[trust.state] : streamKey ? 'waiting' : 'planned'
-              const statusClass = type === 'cables' ? cableStyle(cableStatus) : trust ? TRUST_STYLE[trust.state] : 'text-white/30'
+              const aggregateCount = aggregateType
+                ? aggregateCells.filter((cell) => cell.type === aggregateType).reduce((sum, cell) => sum + cell.count, 0)
+                : 0
+              const count = type === 'cables'
+                ? cableCount
+                : aggregateResolution !== null && aggregateType
+                  ? aggregateCount
+                  : trust?.count
+              const status = type === 'cables'
+                ? cableLabel(cableStatus)
+                : aggregateResolution !== null && aggregateType
+                  ? `aggregate r${aggregateResolution}`
+                  : trust
+                    ? TRUST_LABEL[trust.state]
+                    : streamKey ? 'waiting' : 'planned'
+              const statusClass = type === 'cables'
+                ? cableStyle(cableStatus)
+                : aggregateResolution !== null && aggregateType
+                  ? 'text-cyan-300/80'
+                  : trust ? TRUST_STYLE[trust.state] : 'text-white/30'
               return (
               <li key={type}>
                 <label className="flex cursor-pointer items-center justify-between rounded-md px-2 py-2 text-sm text-white/80 transition-colors hover:bg-white/5">

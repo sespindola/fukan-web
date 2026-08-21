@@ -5,9 +5,11 @@ import { useBgpEventStore } from '~/stores/bgpEventStore'
 import { useGlobeStore } from '~/stores/globeStore'
 import { useLayerStore } from '~/stores/layerStore'
 import { useTrustStore, type BootstrapMeta } from '~/stores/trustStore'
+import { compactCells } from 'h3-js'
 import { cellsToParents } from '~/lib/h3'
 import { perfMark } from '~/lib/perf'
 import type { AssetType, FukanEvent, BgpEvent } from '~/types/telemetry'
+import { aggregateModeForResolution } from '~/lib/telemetryMode'
 
 const consumer = createConsumer()
 
@@ -28,6 +30,19 @@ interface BgpBootstrap {
   meta?: BootstrapMeta
 }
 
+interface TelemetryDeltaBatch {
+  type: 'delta_batch'
+  v: number
+  sent_at: number
+  events: FukanEvent[]
+}
+
+function isTelemetryDeltaBatch(data: unknown): data is TelemetryDeltaBatch {
+  return typeof data === 'object' && data !== null &&
+    'type' in data && (data as TelemetryDeltaBatch).type === 'delta_batch' &&
+    'events' in data && Array.isArray((data as TelemetryDeltaBatch).events)
+}
+
 function isTelemetryBootstrap(data: unknown): data is TelemetryBootstrap {
   return (
     typeof data === 'object' &&
@@ -46,11 +61,9 @@ function isBgpBootstrap(data: unknown): data is BgpBootstrap {
   )
 }
 
-// Defensive cap so the ActionCable subscribe frame stays under anycable-go's
-// default 64 KB max_message_size. H3 resolution bands are tuned to keep
-// polygonToCells under ~1500 cells at any altitude, so this should rarely
-// trip. 2000 cells × 3 types × ~20 bytes ≈ 120 KB worst case on a maximally-
-// open layer config — acceptable, but worth watching.
+// Defensive pre-compaction cap. Close viewports are compacted before their
+// cells enter the ActionCable identifier, which keeps both subscribe frames
+// and the identifier repeated on server messages comfortably bounded.
 const MAX_SUBSCRIBE_CELLS = 2_000
 
 const TELEMETRY_LAYER_TYPES: readonly AssetType[] = ['aircraft', 'vessel', 'satellite']
@@ -82,10 +95,12 @@ function applySubscriptions(): void {
   const { viewportH3Cells: cells, viewportResolution: resolution } = useGlobeStore.getState()
   const assetTypes = enabledTelemetryTypes()
   const cappedCells = cells.length > MAX_SUBSCRIBE_CELLS ? cells.slice(0, MAX_SUBSCRIBE_CELLS) : cells
+  const detailMode = !aggregateModeForResolution(resolution)
+  const streamCells = detailMode && cappedCells.length > 0 ? compactCells(cappedCells).sort() : []
   const bgpCells = bgpEnabled() ? cellsToParents(cappedCells, BGP_SUBSCRIBE_RESOLUTION) : []
 
-  const desiredTelemetry = assetTypes.length > 0
-    ? JSON.stringify({ channel: 'TelemetryChannel', cells: cappedCells, resolution, assetTypes })
+  const desiredTelemetry = assetTypes.length > 0 && detailMode
+    ? JSON.stringify({ channel: 'TelemetryChannel', streamCells, assetTypes })
     : ''
   const desiredBgp = bgpEnabled()
     ? JSON.stringify({ channel: 'BgpEventsChannel', cells: bgpCells })
@@ -111,18 +126,18 @@ function applySubscriptions(): void {
   // subscriptions kick off so the bootstrap + live stream repopulate
   // into a freshly pruned state.
   if (telemetryChanged) {
-    useStreamStore.getState().evictOutsideCells(cappedCells, resolution)
+    if (detailMode) useStreamStore.getState().evictOutsideCells(cappedCells, resolution)
   }
 
   if (telemetryChanged) {
-    if (assetTypes.length > 0) {
+    if (assetTypes.length > 0 && detailMode) {
       useStreamStore.getState().setConnectionStatus('connecting')
       telemetrySub = consumer.subscriptions.create(
         {
           channel: 'TelemetryChannel',
-          h3_cells: cappedCells,
-          resolution,
+          stream_cells: streamCells,
           asset_types: assetTypes,
+          wire_version: 1,
         },
         {
           connected() {
@@ -135,7 +150,13 @@ function applySubscriptions(): void {
             useStreamStore.getState().setConnectionStatus('disconnected')
           },
           received(data: unknown) {
-            if (isTelemetryBootstrap(data)) {
+            if (isTelemetryDeltaBatch(data)) {
+              perfMark('telemetry.delta_batch.received', {
+                events: data.events.length,
+                age_ms: Math.max(0, Date.now() - data.sent_at),
+              })
+              useStreamStore.getState().upsertBatch(data.events)
+            } else if (isTelemetryBootstrap(data)) {
               perfMark('telemetry.bootstrap.received', {
                 rows: data.data.length,
                 bytes: JSON.stringify(data).length,
@@ -151,8 +172,7 @@ function applySubscriptions(): void {
         },
       )
     } else {
-      // All telemetry layers off — no subscription at all. Avoids wasted
-      // Redis fan-out and bootstrap queries when the user wants BGP only.
+      // Coarse LOD and all-layers-off states use no individual live stream.
       useStreamStore.getState().setConnectionStatus('disconnected')
     }
   }
